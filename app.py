@@ -1,4 +1,7 @@
 
+# V75 TIMEOUT FIX - 17 Nov 2026 - V74 wala TimeoutError fix
+# User error: TimeoutError at fetch_global_all() line 91 - as_completed(timeout=4) ne TimeoutError feka, par V74 me usko pakda hi nahi tha, isliye app crash ho gaya.
+# FIX: as_completed ko try/except TimeoutError me lapet diya, timeout aaye to bhi jitne numbers aa gaye wahi dikhayenge, app nahi girega. Aur UI me bhi har fetch ko try/except me daal diya - Global/FII/Nifty me se koi bhi fail ho to warning dikhega, crash nahi hoga. Baaki sab V74 jaisa hi hai - koi feature hataya nahi hai.
 # V74 CLEAN FAST - ALL SOURCES + ALL INDICATORS - 17 Nov 2026
 # Bhai ne bola: "naya repo banaya par pehle se bhi slow hai, global nahi, FII/DII nahi, scan nahi, sab source + sab link + sab indicator + permutation use kar"
 # Wajah: Purani file 548 KB thi - V57 se V73 tak 17 version ka code ek ke upar ek jama tha, har load pe 548 KB parse + pandas + yfinance import = slow.
@@ -86,15 +89,22 @@ def fetch_global_all():
         if typ == "nasdaq": return k, fetch_nasdaq(sym)
         if typ == "frank": return k, fetch_frankfurter_usdinr()
         return k, (None, 0.0, "FAILED")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-        futs = [ex.submit(_one, k, s, t) for k, lst in jobs.items() for (s, t) in lst]
-        for f in concurrent.futures.as_completed(futs, timeout=4):
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            futs = [ex.submit(_one, k, s, t) for k, lst in jobs.items() for (s, t) in lst]
             try:
-                k, (p, pct, src) = f.result(timeout=1)
-            except Exception: continue
-            if p and p > 0 and k not in out:
-                if k == "GIFT_NIFTY": p = p + 25.0
-                out[k] = {"price": p, "change_pct": float(pct or 0.0), "source": src, "live": True}
+                for f in concurrent.futures.as_completed(futs, timeout=4):
+                    try:
+                        k, (p, pct, src) = f.result(timeout=1)
+                    except Exception: continue
+                    if p and p > 0 and k not in out:
+                        if k == "GIFT_NIFTY": p = p + 25.0
+                        out[k] = {"price": p, "change_pct": float(pct or 0.0), "source": src, "live": True}
+            except TimeoutError:
+                # V75 FIX: 4 sec me jo aa gaya wahi kaafi hai, baaki ko chhodo, app mat girao. Partial result hi return karo.
+                pass
+    except Exception:
+        pass
     return out
 def fetch_nifty_ohlc():
     # Nifty 50 daily OHLC - 50 rows, 5 KB, isse hi saare indicator banenge
@@ -233,7 +243,10 @@ st.subheader("🌍 LIVE Global Streaming - Sab Source Parallel (3 sec)")
 if st.button("🔴 LIVE Refresh - Global (3 sec)", use_container_width=True):
     st.rerun()
 with st.spinner("Global LIVE la raha hoon - Stooq + Nasdaq + Frankfurter parallel..."):
-    g = fetch_global_all()
+    try:
+        g = fetch_global_all()
+    except Exception:
+        g = {}
 if g:
     st.success(f"✅ LIVE - {len(g)}/8 numbers aa gaye, Source upar likha hai. {now_str()}")
 else:
@@ -251,7 +264,10 @@ for col, key, label, pre in [(c5, "CRUDE_OIL", "Brent Crude (Oil)", "$"), (c6, "
 # FII/DII
 st.subheader("🏛️ FII vs DII - Sab Source")
 with st.spinner("FII/DII la raha hoon - NSE + Moneycontrol..."):
-    fii = fetch_fii_dii()
+    try:
+        fii = fetch_fii_dii()
+    except Exception:
+        fii = {"fii": None, "dii": None, "source": "AWAITING", "note": "Load me der lagi - LIVE Refresh dabao"}
 f1, f2, f3 = st.columns(3)
 with f1: st.metric("FII Net Cash (₹ Cr)", fmt(fii.get("fii")) if fii.get("fii") is not None else "Awaiting", delta=fii.get("source", ""))
 with f2: st.metric("DII Net Cash (₹ Cr)", fmt(fii.get("dii")) if fii.get("dii") is not None else "Awaiting", delta=fii.get("source", ""))
@@ -260,8 +276,11 @@ st.caption("FII/DII raat ko nahi aata - market band hai to kal 9:15 pe aayega. T
 # Indicators + Confluence
 st.subheader("📊 Sab Indicators - Ek Hi Nifty OHLC Se (5 KB)")
 with st.spinner("Indicators bana raha hoon - RSI, MACD, ADX, VWAP, EMA, Bollinger, sab..."):
-    rows = fetch_nifty_ohlc()
-    ind = calc_all_indicators(rows) if rows else {}
+    try:
+        rows = fetch_nifty_ohlc()
+        ind = calc_all_indicators(rows) if rows else {}
+    except Exception:
+        rows = []; ind = {}
 if not ind:
     st.warning("⏳ Nifty OHLC load ho raha hai - 3 sec ruk, LIVE Refresh dabao. Indicator isi se banega.")
     st.stop()
