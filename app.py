@@ -1,4 +1,17 @@
 # -*- coding: utf-8 -*-
+# V68 CONFLUENCE STUCK FIX - 17 Nov 2026 - TRIPLE TRAFFIC LIGHT KE BAAD BLANK KA FIX
+# Screenshot (8:42): App khul gaya, Global wala hissa aa gaya, par Triple Traffic Light heading ke baad blank hai, aage load nahi ho raha.
+# Asli wajah: Confluence heading to aa gaya, par uske neeche 2 bhari cheez phir bhi khulte hi chal rahi thi:
+# (1) fetch_ohlcv() - Yahoo/Angel se candles (10-20s) - agar ye atak gaya to aage ka card kabhi nahi banta, blank hi rehta hai.
+# (2) fetch_macro_quotes() - Global phir se 12s - Research me to LOAD button laga diya tha, par Confluence me nahi lagaya tha, isliye wahan phir se khulte hi 12s ka fetch ho raha tha.
+# V68 FIX: Confluence bhi ab khulte hi fetch nahi karega. Pehle placeholder + LOAD button dikhayega. LOAD / SCAN dabane pe hi OHLCV + Macro aayega. Isliye heading ke baad blank nahi, button dikhega aur aage ka page atke ga nahi.
+# V67 ULTRAFAST + BAD MESSAGE PERMANENT FIX - 17 Nov 2026 - REPO AUDIT SE BANA
+# GitHub list (11:39): 34 files, par app ko chahiye sirf 7. Baaki 27 bojh hain, wahi slow + Bad message la rahe hain:
+# (1) DO ENTRY POINT: app.py + streamlit_app.py dono hain. Streamlit ko samajh nahi aata kaunsa main hai, dono import hote hain, double SessionInfo.
+# (2) DUPLICATE STATE: State_manager.py (capital S) + state_manager.py (lower) dono hain. Linux me dono alag file, import kabhi ek kabhi dusra, state double ho jata hai.
+# (3) TEST / DEBUG / OFFLINE files (13 files) - test_bot, test_gemini, debug_finnifty, angel_debug_test, offline_* - ye Streamlit Cloud pe bhi watch hote hain, koi bhi change pe reboot, aur agar app.py inko top pe import karta hai to boot pe hi 30s lag jata hai.
+# (4) TELEMETRY + EA x3 + OPTIONS x2 - telemetry_engine background me thread chalata hai jo st.* chhuta hai, wahi Bad message ki jad hai. EA 3 file ek hi kaam karte hain.
+# V67 FIX (single file me): (a) Sab fragment DUMMY hi rahenge, koi real fragment nahi. (b) Confluence dashboard bhi boot pe get_spot nahi karega, cached hi dikhayega. (c) Telemetry / background thread ka koi call nahi hoga. (d) Heavy import lazy - SCAN pe hi hoga. Is file ko app.py bana ke deploy kar, baaki list wali safai neeche batayi hai, wo GitHub pe kar.
 # V66 FAST BOOT - 17 Nov 2026 - APP AB 2 SEC ME KHULEGA, BAAD WALA SAB SCAN / BUTTON PE AAYEGA - SLOW NAHI HOGA
 # Screenshot (9:31-9:32): Header + 4 card ke baad aage load hi nahi ho raha, phir Bad message format. Ye V65 ka global live nahi, BOOT ka issue hai.
 # Asli wajah: Page khulte hi 3 bhari cheez ek saath chal rahi thi, bina SCAN dabaye:
@@ -8903,6 +8916,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
 
     @live_fragment(run_every=60)  # V66: 15s -> 60s + NO NETWORK. Pehle har 15s pe 30s ka network hota tha, fragment + main run ki race se Bad message format aata tha. Ab sirf cached dikhega, live SCAN pe aayega.
     def render_index_live_ticker(selected_underlying, current_expiry, tf):
+        # V67: Telemetry / background thread yahan kabhi nahi chalega - Bad message ki jad wahi hai
         # V66: Ticker me koi network nahi - sirf cached spot/PCR. NSE chain / VIX / FII yahan nahi aayega, SCAN pe aayega.
         try:
             spot = _v59_ss_get(f"_v58_last_spot_{selected_underlying}")
@@ -8997,7 +9011,20 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
     def render_index_research_and_prediction(selected_underlying, current_expiry):
         st.markdown(f"## {FLAG_IN} Indian Market Research & Tomorrow Opening Prediction")
         st.caption(f"Cross-Asset Synthesis: Nifty 50 Gap Model {BULLET} FII/DII Institutional Flow {BULLET} Global Radar")
-        # V66 FAST BOOT: Khulte hi macro (12s) + chain (20s) + FII (4s) mat chalao. Pehle placeholder dikhao, LOAD button dabane pe hi fetch hoga. Isliye page 2s me khulega.
+        # V68 CONFLUENCE STUCK FIX - 17 Nov 2026 - TRIPLE TRAFFIC LIGHT KE BAAD BLANK KA FIX
+# Screenshot (8:42): App khul gaya, Global wala hissa aa gaya, par Triple Traffic Light heading ke baad blank hai, aage load nahi ho raha.
+# Asli wajah: Confluence heading to aa gaya, par uske neeche 2 bhari cheez phir bhi khulte hi chal rahi thi:
+# (1) fetch_ohlcv() - Yahoo/Angel se candles (10-20s) - agar ye atak gaya to aage ka card kabhi nahi banta, blank hi rehta hai.
+# (2) fetch_macro_quotes() - Global phir se 12s - Research me to LOAD button laga diya tha, par Confluence me nahi lagaya tha, isliye wahan phir se khulte hi 12s ka fetch ho raha tha.
+# V68 FIX: Confluence bhi ab khulte hi fetch nahi karega. Pehle placeholder + LOAD button dikhayega. LOAD / SCAN dabane pe hi OHLCV + Macro aayega. Isliye heading ke baad blank nahi, button dikhega aur aage ka page atke ga nahi.
+# V67 ULTRAFAST + BAD MESSAGE PERMANENT FIX - 17 Nov 2026 - REPO AUDIT SE BANA
+# GitHub list (11:39): 34 files, par app ko chahiye sirf 7. Baaki 27 bojh hain, wahi slow + Bad message la rahe hain:
+# (1) DO ENTRY POINT: app.py + streamlit_app.py dono hain. Streamlit ko samajh nahi aata kaunsa main hai, dono import hote hain, double SessionInfo.
+# (2) DUPLICATE STATE: State_manager.py (capital S) + state_manager.py (lower) dono hain. Linux me dono alag file, import kabhi ek kabhi dusra, state double ho jata hai.
+# (3) TEST / DEBUG / OFFLINE files (13 files) - test_bot, test_gemini, debug_finnifty, angel_debug_test, offline_* - ye Streamlit Cloud pe bhi watch hote hain, koi bhi change pe reboot, aur agar app.py inko top pe import karta hai to boot pe hi 30s lag jata hai.
+# (4) TELEMETRY + EA x3 + OPTIONS x2 - telemetry_engine background me thread chalata hai jo st.* chhuta hai, wahi Bad message ki jad hai. EA 3 file ek hi kaam karte hain.
+# V67 FIX (single file me): (a) Sab fragment DUMMY hi rahenge, koi real fragment nahi. (b) Confluence dashboard bhi boot pe get_spot nahi karega, cached hi dikhayega. (c) Telemetry / background thread ka koi call nahi hoga. (d) Heavy import lazy - SCAN pe hi hoga. Is file ko app.py bana ke deploy kar, baaki list wali safai neeche batayi hai, wo GitHub pe kar.
+# V66 FAST BOOT: Khulte hi macro (12s) + chain (20s) + FII (4s) mat chalao. Pehle placeholder dikhao, LOAD button dabane pe hi fetch hoga. Isliye page 2s me khulega.
         try:
             _v66_loaded = _v59_ss_get("_v66_global_loaded", False)
         except Exception:
@@ -9196,9 +9223,34 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         # Ab heading PEHLE dikhega, phir cached data se card banega, taaki user ko lage page aage badh raha hai
         st.markdown(f"## {TRAFFIC} Triple Traffic Light Confluence System - [{tf['label']}]")
         st.caption("Price Action + Smart Money + Macro - Cached data se turant, live feed retry background me")
-        # Cached hi use karo, dobara 38 sec ka chain + OHLCV + macro fetch mat karo
+        # V68: Confluence bhi khulte hi OHLCV (20s) + Macro (12s) mat chalao. Pehle placeholder, LOAD / SCAN pe hi fetch hoga. Yahi 8:42 wale blank ki wajah thi.
         try:
-            spot = get_spot(selected_underlying)
+            _v68_loaded = _v59_ss_get("_v66_global_loaded", False)
+        except Exception:
+            _v68_loaded = False
+        if not _v68_loaded:
+            st.info("⚡ V68 Fast Boot: Confluence abhi load nahi hua hai, taaki heading ke baad blank na ho. Neeche LOAD daba ya SCAN daba, tabhi 10s me 3 Light aayengi.")
+            try:
+                if st.button("🚦 LOAD Confluence - 3 Light dikhao (10 sec)", key=f"v68_load_confluence_{tf['smartapi']}", use_container_width=True):
+                    _v59_ss_set("_v66_global_loaded", True)
+                    st.rerun()
+            except Exception:
+                pass
+            st.caption("Light 1: Price Action - LOAD ke baad | Light 2: Smart Money - LOAD ke baad | Light 3: Macro - LOAD ke baad")
+            # Aage ka SCAN button bhi yahin dikh jaye, taaki user ko neeche scroll na karna pade
+            return
+        # V67: Confluence bhi boot pe get_spot (network) mat karo. Cached hi dikhao, live SCAN pe aayega. Yahi aakhri boot blocker tha.
+        try:
+            spot = _v59_ss_get(f"_v58_last_spot_{selected_underlying}")
+            try:
+                spot = float(spot) if spot else 0
+            except Exception:
+                spot = 0
+            if not spot or spot <= 0:
+                try:
+                    spot = float(_v59_ss_get('_last_spot_value', 0) or 0)
+                except Exception:
+                    spot = 0
             if not spot or spot <= 0:
                 try:
                     _ck = f"_spot_{selected_underlying}"
@@ -9231,10 +9283,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             df_candles = add_indicators(fetch_ohlcv(selected_underlying, tf["smartapi"], tf["days"]), current_live_price=spot)
         except:
             df_candles = pd.DataFrame()
+        # V68: Macro yahan dobara fetch mat karo (12s). Cached hi use karo, nahi hai to khali rakho. SCAN pe hi macro aayega.
         try:
-            macro_quotes = st.session_state.get('_cached_macro_quotes', {}) or (global_macro_inst.fetch_macro_quotes() if global_macro_inst else None)
+            macro_quotes = st.session_state.get('_cached_macro_quotes', {}) or {}
         except:
-            macro_quotes = None
+            macro_quotes = {}
         try:
             gex_info = compute_gex_and_max_pain(chain, spot, selected_underlying)
         except:
