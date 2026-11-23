@@ -1,4 +1,4 @@
-# ===== CLEANED SAFE MODE + DESIGN V5 MINIMAL (colour fix) =====
+# ===== CLEANED SAFE + V6 HIDE RAM KAHANI (default HIDE, toggle se dikhega) =====
 # V5: V4 ka global colour override hataya. Sirf layout compact hai, colour app ka original hai.
 # Kya badla:
 #  1) REAL TRADING HARD OFF - place_angel_real_order / execute_real_trade_with_confirmation / auto_entry / auto_exit ab hamesha (False, "disabled") return karte hain.
@@ -96,7 +96,7 @@ REAL_TRADING_PERMANENTLY_DISABLED = True
 # V57 AUDIT FIX - 16 Nov 2026 - ULTA SIGNAL FIX
 # Root cause: 3-Light Confluence kabhi live price ko veto nahi karta tha. Market gir raha tha (Spot<VWAP + Spot<DayOpen + Spot<GEX Flip) phir bhi 3 GREEN -> ULTRA BUY CE 95%.
 # Fixes: (1) Live-price VETO, (2) News up-substring trap, (3) Day Open multi-day bug, (4) Strong Check auto-pass band + HTF circular, (5) Confluence flip band, (6) Per-index confluence, (7) GEX fallback flag, (8) OTR asli prev_close+5m momentum.
-"""
+_V6_HIDDEN_CHANGELOG = """  # V6: pehle ye bare string tha, Streamlit magic isko upar dikha deta tha. Ab variable me hai, default HIDE rahega.
 V56 LIVE TEY FIX - 13 Nov 2026 - PROPER AUDIT: Stooq+Yahoo FIRST, Forming Candle FIX, VWAP Always, Score 1->3, Strong Check Real Values, PCR 1.00 Trap Removed, Fragment Safe Live - % 5-day se 1-day kiya - Nasdaq 6.56% -> 0.21% aur Gift 3.11% -> -0.01% ka reason range=5d tha, ab range=2d
 1) V55.3 DEFINITIVE: Fragment BAND + autorefresh BAND + Parallel ThreadPool scan BAND -> Sequential scan. Ye 3 hi SessionInfo error ki jad the.
 2) Strong Confirmation: 85% conviction + OTR CE Allowed ke baad bhi 7-filter Strong Check, fail hone par NO TRADE / WAIT
@@ -1047,6 +1047,29 @@ def _v5_minimal_css():
         pass
 
 _v5_minimal_css()
+# ===== V6 HIDE RAM KAHANI - 23 Nov - Default HIDE, toggle se dikhega =====
+# Upar wali V56 / V55.3 / Production Release wali ram kahani ab default HIDE hai.
+# Sidebar me checkbox hai - chahiye to tick karo, turant dikhegi, hatani ho to untick karo.
+try:
+    _v6_show = st.sidebar.checkbox("📜 Ram Kahani / Changelog dikhao", value=False, key="v6_show_changelog", help="ON karo to V56/V55.3 + lamba title + Production Release wali ram kahani dikhegi. OFF pe sirf NIFTY Paper Trading dikhega.")
+except Exception:
+    _v6_show = False
+# Main me bhi ek chhota toggle - sidebar khole bina bhi hide/unhide ho jaye
+try:
+    _v6_show_main = st.checkbox("📜 Ram kahani dikhao", value=bool(st.session_state.get("v6_show_changelog", False)), key="v6_show_changelog_main")
+    if _v6_show_main != st.session_state.get("v6_show_changelog", False):
+        st.session_state["v6_show_changelog"] = _v6_show_main
+        _v6_show = _v6_show_main
+except Exception:
+    pass
+if st.session_state.get("v6_show_changelog", False):
+    try:
+        with st.expander("📜 Ram Kahani - Changelog (V56 / V55.3 / Production Release)", expanded=True):
+            st.markdown(_V6_HIDDEN_CHANGELOG)
+            st.caption("Ye purana changelog hai - trading ke liye zaroori nahi. Hide karne ke liye upar wala checkbox OFF karo.")
+    except Exception:
+        pass
+# ===== END V6 HIDE RAM KAHANI =====
 # ===== END DESIGN V5 MINIMAL =====
 
 # ===== V61 BOOT GUARD + LAZY OTR IMPORT - set_page_config ke BAAD hi Streamlit ko chhuo =====
@@ -9944,8 +9967,13 @@ DATA:
 # =====================================================================
 # 21. USER INTERFACE: SIDEBAR, HEALTH BARS & WORKFLOW
 # =====================================================================
-st.title(f"{BOLT} AI Institutional Live Trading Advisor (Quant GEX & Equity Engine)")
-st.caption(f"Universal 5,000+ Equity Universe {BULLET} Multi-Factor Equity Entry & Exit Calls {BULLET} SEBI Lot Sizes {BULLET} Dealer GEX Radar")
+# V6: Lamba title bhi ram kahani ka hissa hai - default chhota title, toggle ON pe lamba
+if st.session_state.get("v6_show_changelog", False):
+    st.title(f"{BOLT} AI Institutional Live Trading Advisor (Quant GEX & Equity Engine)")
+    st.caption(f"Universal 5,000+ Equity Universe {BULLET} Multi-Factor Equity Entry & Exit Calls {BULLET} SEBI Lot Sizes {BULLET} Dealer GEX Radar")
+else:
+    st.title("📱 NIFTY \u2022 Paper Trading")
+    st.caption("Paper Mode \u2022 SAFE \u2022 Real Trading OFF \u2022 Ram kahani hide hai - sidebar me tick karke dikha sakte ho")
 
 st.sidebar.header(f"{STOPWATCH} Strategy Timeframe")
 selected_tf_key = st.sidebar.selectbox(
