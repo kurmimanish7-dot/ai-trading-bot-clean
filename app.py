@@ -1026,55 +1026,76 @@ st.set_page_config(
 # ===== DESIGN V4 - MOBILE-FIRST COMPACT - User chose Option 4 =====
 # Logic bilkul same hai, sirf look badla hai. Ye block sirf CSS inject karta hai, koi signal / paper / chain logic nahi chhedta.
 def _v4_mobile_css():
+    # FIXED 23 Nov - Screenshot bug: Phone DARK mode me Streamlit saara text WHITE kar deta hai,
+    # aur humne header background WHITE kar diya tha -> white-on-white = header dikhta hi nahi tha.
+    # Fix: (1) color-scheme: light force karo, (2) header ko DARK #111827 + WHITE text karo taaki dono theme me dikhe,
+    # (3) body / markdown text ko DARK #111827 force karo, (4) upar ek pakka V4 header bar dikhao.
     try:
         st.markdown("""
         <style>
-        /* V4 - Mobile first, max width phone jaisa */
-        .block-container { padding-top: 0.6rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; padding-bottom: 5rem !important; max-width: 560px !important; }
-        header[data-testid="stHeader"] { background: rgba(255,255,255,0.92) !important; }
-        /* Headings compact */
-        h1 { font-size: 1.45rem !important; line-height: 1.2 !important; font-weight: 800 !important; letter-spacing: -0.02em; }
-        h2 { font-size: 1.15rem !important; font-weight: 800 !important; margin-top: 1.1rem !important; }
-        h3 { font-size: 1.0rem !important; font-weight: 700 !important; }
-        p, li, .stMarkdown { font-size: 0.92rem !important; line-height: 1.45 !important; }
-        /* V4 Card - har metric / section ek white card jaisa */
-        [data-testid="stMetric"] { background: #ffffff !important; border: 1px solid #E6E8EC !important; border-radius: 16px !important; padding: 12px 12px 10px 12px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important; }
-        [data-testid="stMetricValue"] { font-size: 1.45rem !important; font-weight: 800 !important; }
-        [data-testid="stMetricLabel"] { font-size: 0.78rem !important; font-weight: 600 !important; color: #5A6472 !important; }
-        /* V4 Buttons - bade, thumb-friendly, full width */
-        .stButton > button { width: 100% !important; min-height: 54px !important; font-size: 17px !important; font-weight: 700 !important; border-radius: 14px !important; padding: 10px 14px !important; }
-        .stButton > button[kind="primary"] { background: #00A651 !important; color: #fff !important; border: none !important; box-shadow: 0 4px 14px rgba(0,166,81,0.28) !important; }
-        .stButton > button[kind="secondary"] { background: #F2F4F7 !important; color: #111827 !important; border: 1px solid #E6E8EC !important; }
-        /* Sidebar compact on mobile */
+        /* 1) Dark-mode ko harrao - hamesha LIGHT */
+        html, body { color-scheme: light !important; background: #FFFFFF !important; }
+        [data-testid="stAppViewContainer"], [data-testid="stApp"], .stApp, [data-testid="stMain"] { background: #F7F8FA !important; color: #111827 !important; }
+        [data-testid="stMainBlockContainer"], .block-container { background: #F7F8FA !important; color: #111827 !important; padding-top: 0.4rem !important; padding-left: 0.7rem !important; padding-right: 0.7rem !important; padding-bottom: 5rem !important; max-width: 560px !important; }
+        /* 2) Streamlit ka top header - DARK karo, text WHITE - dono theme me dikhega */
+        header[data-testid="stHeader"] { background: #111827 !important; color: #FFFFFF !important; }
+        header[data-testid="stHeader"] * { color: #FFFFFF !important; }
+        header[data-testid="stHeader"] button { color: #FFFFFF !important; }
+        /* 3) Saara app text DARK - white-on-white khatam */
+        [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li, [data-testid="stMarkdownContainer"] span, [data-testid="stMarkdownContainer"] div { color: #111827 !important; }
+        h1, h2, h3, h4 { color: #111827 !important; }
+        h1 { font-size: 1.15rem !important; line-height: 1.25 !important; font-weight: 800 !important; }
+        h2 { font-size: 1.05rem !important; font-weight: 800 !important; margin-top: 0.9rem !important; }
+        h3 { font-size: 0.95rem !important; font-weight: 700 !important; }
+        p, li { font-size: 0.92rem !important; line-height: 1.45 !important; }
+        label, [data-testid="stWidgetLabel"] p { color: #111827 !important; }
+        /* Metric cards - WHITE card, DARK text (pehle white-on-white tha) */
+        [data-testid="stMetric"] { background: #FFFFFF !important; border: 1px solid #E6E8EC !important; border-radius: 16px !important; padding: 12px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
+        [data-testid="stMetricValue"], [data-testid="stMetricValue"] * { color: #111827 !important; font-size: 1.4rem !important; font-weight: 800 !important; }
+        [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * { color: #5A6472 !important; font-size: 0.78rem !important; font-weight: 600 !important; }
+        [data-testid="stMetricDelta"] * { color: inherit !important; }
+        /* Buttons - bade, thumb-friendly */
+        .stButton > button { width: 100% !important; min-height: 54px !important; font-size: 17px !important; font-weight: 700 !important; border-radius: 14px !important; }
+        .stButton > button[kind="primary"] { background: #00A651 !important; color: #FFFFFF !important; border: none !important; }
+        .stButton > button[kind="primary"] * { color: #FFFFFF !important; }
+        .stButton > button[kind="secondary"] { background: #FFFFFF !important; color: #111827 !important; border: 1px solid #D9DEE6 !important; }
+        /* Sidebar - LIGHT hi rahe */
+        [data-testid="stSidebar"], [data-testid="stSidebar"] * { background: #FFFFFF !important; color: #111827 !important; }
         [data-testid="stSidebar"] { min-width: 260px !important; max-width: 300px !important; }
-        /* Tabs - scrollable, pill jaisa */
-        .stTabs [data-baseweb="tab-list"] { gap: 6px !important; overflow-x: auto !important; }
-        .stTabs [data-baseweb="tab"] { border-radius: 999px !important; padding: 8px 14px !important; background: #F2F4F7 !important; font-weight: 700 !important; }
-        /* Expander / dataframe compact */
-        .stExpander { border-radius: 14px !important; border: 1px solid #E6E8EC !important; }
-        [data-testid="stDataFrame"] { border-radius: 14px !important; overflow: hidden !important; }
-        /* V4 Traffic light + pill helpers - use in markdown: <span class="v4-dot green"></span> */
-        .v4-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.02em; }
-        .v4-pill-green { background: #E6F7ED; color: #007A3D; } .v4-pill-yellow { background: #FFF3CD; color: #8A6D00; } .v4-pill-red { background: #FDE8E8; color: #B42318; }
-        .v4-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-        .v4-dot.green { background: #00C853; box-shadow: 0 0 0 4px #E6F7ED; } .v4-dot.yellow { background: #FFC107; box-shadow: 0 0 0 4px #FFF3CD; } .v4-dot.red { background: #FF3B30; box-shadow: 0 0 0 4px #FDE8E8; }
-        .v4-topbar { background: #111827; color: #fff; border-radius: 16px; padding: 12px 14px; margin: 6px 0 12px 0; }
-        .v4-topbar b { font-size: 20px; }
-        /* Hide Streamlit chrome */
+        /* Tabs / expander */
+        .stTabs [data-baseweb="tab-list"] { gap: 6px !important; }
+        .stTabs [data-baseweb="tab"] { background: #FFFFFF !important; color: #111827 !important; border-radius: 999px !important; padding: 8px 14px !important; font-weight: 700 !important; }
+        .stExpander { background: #FFFFFF !important; border: 1px solid #E6E8EC !important; border-radius: 14px !important; }
+        [data-testid="stDataFrame"] { background: #FFFFFF !important; border-radius: 14px !important; }
+        /* 4) V4 FIXED HEADER - DARK bar, WHITE text, hamesha dikhega */
+        .v4-header-fixed { background: #111827 !important; color: #FFFFFF !important; border-radius: 16px !important; padding: 12px 14px !important; margin: 2px 0 12px 0 !important; }
+        .v4-header-fixed * { color: #FFFFFF !important; }
+        .v4-header-fixed .v4-title { font-size: 17px !important; font-weight: 800 !important; letter-spacing: -0.01em !important; margin: 0 !important; }
+        .v4-header-fixed .v4-sub { font-size: 12px !important; color: #CBD5E1 !important; margin: 2px 0 0 0 !important; }
+        .v4-pill { display: inline-block !important; padding: 5px 10px !important; border-radius: 999px !important; font-size: 11px !important; font-weight: 800 !important; }
+        .v4-pill-dark { background: #00A651 !important; color: #FFFFFF !important; }
+        .v4-dot { display: inline-block !important; width: 12px !important; height: 12px !important; border-radius: 50% !important; margin-right: 6px !important; }
+        .v4-dot.green { background: #00E676 !important; } .v4-dot.yellow { background: #FFC107 !important; } .v4-dot.red { background: #FF5252 !important; }
         #MainMenu { visibility: hidden !important; } footer { visibility: hidden !important; }
-        /* Phone pe columns ka gap kam */
-        @media (max-width: 640px) {
-          .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; }
-          [data-testid="column"] { min-width: 0 !important; }
-          h1 { font-size: 1.3rem !important; }
-        }
+        @media (max-width: 640px) { .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; } }
         </style>
         """, unsafe_allow_html=True)
-        st.markdown('<div class="v4-pill v4-pill-green">● PAPER MODE • SAFE • REAL TRADING OFF</div>', unsafe_allow_html=True)
+        # Pakka header - DARK bar, WHITE text, traffic lights + SAFE pill. Ye mockup wala header hai.
+        st.markdown("""
+        <div class="v4-header-fixed">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <p class="v4-title">📱 NIFTY • Paper Trading</p>
+              <p class="v4-sub"><span class="v4-dot green"></span><span class="v4-dot yellow"></span><span class="v4-dot red"></span> Traffic Light • Conviction • Live Signal</p>
+            </div>
+            <div><span class="v4-pill v4-pill-dark">SAFE • PAPER</span></div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
     except Exception as _clean_e:
         try:
             import logging as _lg4
-            _lg4.warning(f"[V4] css failed: {_clean_e}")
+            _lg4.warning(f"[V4-FIXED] css failed: {_clean_e}")
         except Exception:
             pass
 
