@@ -1,5 +1,5 @@
-# ===== CLEANED SAFE MODE + DESIGN V4 MOBILE-FIRST (User chose Option 4) =====
-# DESIGN V4: layout centered + collapsed sidebar + mobile CSS only. Logic / signals / paper trading same as SAFE cleaned file.
+# ===== CLEANED SAFE MODE + DESIGN V5 MINIMAL (colour fix) =====
+# V5: V4 ka global colour override hataya. Sirf layout compact hai, colour app ka original hai.
 # Kya badla:
 #  1) REAL TRADING HARD OFF - place_angel_real_order / execute_real_trade_with_confirmation / auto_entry / auto_exit ab hamesha (False, "disabled") return karte hain.
 #     Wo kabhi broker secrets nahi padhte, kabhi SmartAPI login nahi karte, kabhi order nahi bhejte. enable_real=True bhi ignore hota hai.
@@ -1023,84 +1023,31 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ===== DESIGN V4 - MOBILE-FIRST COMPACT - User chose Option 4 =====
-# Logic bilkul same hai, sirf look badla hai. Ye block sirf CSS inject karta hai, koi signal / paper / chain logic nahi chhedta.
-def _v4_mobile_css():
-    # FIXED 23 Nov - Screenshot bug: Phone DARK mode me Streamlit saara text WHITE kar deta hai,
-    # aur humne header background WHITE kar diya tha -> white-on-white = header dikhta hi nahi tha.
-    # Fix: (1) color-scheme: light force karo, (2) header ko DARK #111827 + WHITE text karo taaki dono theme me dikhe,
-    # (3) body / markdown text ko DARK #111827 force karo, (4) upar ek pakka V4 header bar dikhao.
+# ===== DESIGN V5 MINIMAL - 23 Nov - colour se NO chhedkhani =====
+# V4 / V4-FIXED ki galti: humne global color: #111827 !important laga diya tha.
+# App ke andar ke cards pehle se BLACK background + WHITE text wale hain, isliye
+# dark text + black card = black-on-black, sab gayab. Ab colour ko bilkul nahi chhedenge.
+# Sirf layout: centered + thoda compact padding + bade button. Baaki theme Streamlit ka apna.
+def _v5_minimal_css():
     try:
         st.markdown("""
         <style>
-        /* 1) Dark-mode ko harrao - hamesha LIGHT */
-        html, body { color-scheme: light !important; background: #FFFFFF !important; }
-        [data-testid="stAppViewContainer"], [data-testid="stApp"], .stApp, [data-testid="stMain"] { background: #F7F8FA !important; color: #111827 !important; }
-        [data-testid="stMainBlockContainer"], .block-container { background: #F7F8FA !important; color: #111827 !important; padding-top: 0.4rem !important; padding-left: 0.7rem !important; padding-right: 0.7rem !important; padding-bottom: 5rem !important; max-width: 560px !important; }
-        /* 2) Streamlit ka top header - DARK karo, text WHITE - dono theme me dikhega */
-        header[data-testid="stHeader"] { background: #111827 !important; color: #FFFFFF !important; }
-        header[data-testid="stHeader"] * { color: #FFFFFF !important; }
-        header[data-testid="stHeader"] button { color: #FFFFFF !important; }
-        /* 3) Saara app text DARK - white-on-white khatam */
-        [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li, [data-testid="stMarkdownContainer"] span, [data-testid="stMarkdownContainer"] div { color: #111827 !important; }
-        h1, h2, h3, h4 { color: #111827 !important; }
-        h1 { font-size: 1.15rem !important; line-height: 1.25 !important; font-weight: 800 !important; }
-        h2 { font-size: 1.05rem !important; font-weight: 800 !important; margin-top: 0.9rem !important; }
-        h3 { font-size: 0.95rem !important; font-weight: 700 !important; }
-        p, li { font-size: 0.92rem !important; line-height: 1.45 !important; }
-        label, [data-testid="stWidgetLabel"] p { color: #111827 !important; }
-        /* Metric cards - WHITE card, DARK text (pehle white-on-white tha) */
-        [data-testid="stMetric"] { background: #FFFFFF !important; border: 1px solid #E6E8EC !important; border-radius: 16px !important; padding: 12px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
-        [data-testid="stMetricValue"], [data-testid="stMetricValue"] * { color: #111827 !important; font-size: 1.4rem !important; font-weight: 800 !important; }
-        [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * { color: #5A6472 !important; font-size: 0.78rem !important; font-weight: 600 !important; }
-        [data-testid="stMetricDelta"] * { color: inherit !important; }
-        /* Buttons - bade, thumb-friendly */
-        .stButton > button { width: 100% !important; min-height: 54px !important; font-size: 17px !important; font-weight: 700 !important; border-radius: 14px !important; }
-        .stButton > button[kind="primary"] { background: #00A651 !important; color: #FFFFFF !important; border: none !important; }
-        .stButton > button[kind="primary"] * { color: #FFFFFF !important; }
-        .stButton > button[kind="secondary"] { background: #FFFFFF !important; color: #111827 !important; border: 1px solid #D9DEE6 !important; }
-        /* Sidebar - LIGHT hi rahe */
-        [data-testid="stSidebar"], [data-testid="stSidebar"] * { background: #FFFFFF !important; color: #111827 !important; }
-        [data-testid="stSidebar"] { min-width: 260px !important; max-width: 300px !important; }
-        /* Tabs / expander */
-        .stTabs [data-baseweb="tab-list"] { gap: 6px !important; }
-        .stTabs [data-baseweb="tab"] { background: #FFFFFF !important; color: #111827 !important; border-radius: 999px !important; padding: 8px 14px !important; font-weight: 700 !important; }
-        .stExpander { background: #FFFFFF !important; border: 1px solid #E6E8EC !important; border-radius: 14px !important; }
-        [data-testid="stDataFrame"] { background: #FFFFFF !important; border-radius: 14px !important; }
-        /* 4) V4 FIXED HEADER - DARK bar, WHITE text, hamesha dikhega */
-        .v4-header-fixed { background: #111827 !important; color: #FFFFFF !important; border-radius: 16px !important; padding: 12px 14px !important; margin: 2px 0 12px 0 !important; }
-        .v4-header-fixed * { color: #FFFFFF !important; }
-        .v4-header-fixed .v4-title { font-size: 17px !important; font-weight: 800 !important; letter-spacing: -0.01em !important; margin: 0 !important; }
-        .v4-header-fixed .v4-sub { font-size: 12px !important; color: #CBD5E1 !important; margin: 2px 0 0 0 !important; }
-        .v4-pill { display: inline-block !important; padding: 5px 10px !important; border-radius: 999px !important; font-size: 11px !important; font-weight: 800 !important; }
-        .v4-pill-dark { background: #00A651 !important; color: #FFFFFF !important; }
-        .v4-dot { display: inline-block !important; width: 12px !important; height: 12px !important; border-radius: 50% !important; margin-right: 6px !important; }
-        .v4-dot.green { background: #00E676 !important; } .v4-dot.yellow { background: #FFC107 !important; } .v4-dot.red { background: #FF5252 !important; }
+        .block-container { padding-top: 0.6rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; padding-bottom: 5rem !important; max-width: 560px !important; }
+        h1 { font-size: 1.25rem !important; line-height: 1.25 !important; }
+        h2 { font-size: 1.1rem !important; }
+        .stButton > button { width: 100% !important; min-height: 52px !important; font-size: 16px !important; font-weight: 700 !important; border-radius: 12px !important; }
         #MainMenu { visibility: hidden !important; } footer { visibility: hidden !important; }
-        @media (max-width: 640px) { .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; } }
+        /* Sirf hamara apna header - iske bahar kisi text ka colour nahi badlenge */
+        .v5-header { border-radius: 14px !important; padding: 10px 12px !important; margin: 2px 0 10px 0 !important; background: #111827 !important; }
+        .v5-header * { color: #FFFFFF !important; }
         </style>
         """, unsafe_allow_html=True)
-        # Pakka header - DARK bar, WHITE text, traffic lights + SAFE pill. Ye mockup wala header hai.
-        st.markdown("""
-        <div class="v4-header-fixed">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div>
-              <p class="v4-title">📱 NIFTY • Paper Trading</p>
-              <p class="v4-sub"><span class="v4-dot green"></span><span class="v4-dot yellow"></span><span class="v4-dot red"></span> Traffic Light • Conviction • Live Signal</p>
-            </div>
-            <div><span class="v4-pill v4-pill-dark">SAFE • PAPER</span></div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-    except Exception as _clean_e:
-        try:
-            import logging as _lg4
-            _lg4.warning(f"[V4-FIXED] css failed: {_clean_e}")
-        except Exception:
-            pass
+        st.markdown('<div class="v5-header"><b style="color:#fff;">📱 NIFTY • Paper Trading</b> &nbsp; <span style="color:#fff; font-size:12px;">● PAPER MODE • SAFE • REAL TRADING OFF</span></div>', unsafe_allow_html=True)
+    except Exception as _e:
+        pass
 
-_v4_mobile_css()
-# ===== END DESIGN V4 =====
+_v5_minimal_css()
+# ===== END DESIGN V5 MINIMAL =====
 
 # ===== V61 BOOT GUARD + LAZY OTR IMPORT - set_page_config ke BAAD hi Streamlit ko chhuo =====
 # V61 LAZY IMPORT: otr_v2 ab yahan import hoga, set_page_config ke baad. Pehle ye upar hota tha.
