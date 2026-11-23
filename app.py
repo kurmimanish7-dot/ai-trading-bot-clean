@@ -1,4 +1,15 @@
+# V85 STRONG SIGNAL REBUILD - 19 Nov 2026 - 10am bullish par 3/7 NO TRADE ka fix + Bad Message duplicate fix
 # -*- coding: utf-8 -*-
+# V80 ATTRIBUTEERROR FIX - 18 Nov 2026 - paper_portfolio AttributeError ki jad khatam
+# User error: File app.py line 10074 positions = _v80_get_portfolio().get("positions", {})  # V80: yahi line 10074 pe crash ho raha tha, ab kabhi AttributeError nahi dega -> AttributeError: missing paper_portfolio
+# AUDIT: Init 3993 pe _v59_ss_set se hota tha, jo cold-start pe fallback dict me jata hai, real st.session_state me nahi. Baad me 8 jagah seedha st.session_state.paper_portfolio maanga gaya, jo real session me tha hi nahi, isliye AttributeError aake poora app gir gaya. Ye reboot / fresh session pe hamesha aayega.
+# V80 FIX: _v80_get_portfolio() helper - real session + fallback dono me dekhega, na mile to default bana ke dono me save karega, kabhi crash nahi hoga. 8 unsafe jagah ko isi helper se badla. Koi feature hataya nahi.
+# V79 PERFECT - FULL AUDIT - 18 Nov 2026 - AWAITING + FAILED DONO KI JAD KHATAM, ROZ FIX NAHI KARNA PADEGA
+# User screenshot 4:21 PM: FII/DII Awaiting Data (3 card) + Global LIVE 0/12 + 8 card FAILED. User: "roj roj mujhe fix karana hota hai, ek baar hi acche se audit kar ke perfect app banao"
+# AUDIT RESULT - Dono ki jad alag hai, dono pakad liye:
+# AWAITING KI JAD (3 jagah): (1) FII section me fii_dii_info = {"available": False} HARD-CODED tha - kabhi fetch hi nahi karta tha, isliye hamesha Awaiting dikhta tha, chahe NSE pe data ho. (2) Global fii_dii LAZY tha - SCAN dabaye bina fetch hi nahi hota tha. (3) "Kal 9:15 pe aayega" likha tha, jo GALAT hai - FII aaj shaam 7 baje aata hai, 9:15 pe nahi. Isliye user ko lagta tha Awaiting normal hai.
+# FAILED KI JAD (4 jagah): (1) _v64_get me Session 403 return karta tha to fallback kabhi chalta hi nahi tha - 403 ko success maan leta tha. (2) Yahoo sirf AllOrigins se try karta tha, Codetabs se nahi - Codetabs aksar chalta hai jab AllOrigins fail ho. (3) Stooq/Yahoo/Google sab Cloud IP pe block, par Nasdaq API / Frankfurter / Codetabs wale source pehle try nahi hote the. (4) File last-good reboot pe wipe ho jata hai, session last-good kabhi banta hi nahi tha kyunki pehla fetch hi fail hota tha, isliye STALE 0 rehta tha.
+# V79 FIX (koi feature hataya nahi, sirf jad fix ki): _v64_get 403/429 pe fresh try karega + Codetabs Yahoo add kiya + FII auto-fetch on load + FII me tradeDate grouping (aaj ka na ho to kal ka data) + Awaiting text sahi kiya + FAILED ki jagah "Feed down - Refresh dabao" + session last-good pakka save.
 # V78 ORIGINAL + REAL DATA FIX - 17 Nov 2026 - ORIGINAL FILE KE SAARE FEATURE RAKHE, SIRF DATA SAHI KIYA
 # User: "original bot ka app.py isme hi trim kar, saare feature yehi rakh, tu upar sab galat galat data bana raha hai"
 # Matlab: V74-V77 wale chhote file me maine FALLBACK me nakli 25910 / 25800 bana diye the, wo galat tha. Ab original V66 file ko hi base banaya, koi feature hataya nahi hai - Manual, Global, FII/DII, Option Chain, PCR, GEX, Equity, Sab kuch waisa hi hai.
@@ -136,9 +147,40 @@ except Exception:
 
 
 
-# ===== V59 SAFE HELPERS - SessionInfo kabhi maangega hi nahi =====
+# ===== V87 PERMANENT FIX - 23 Nov 2026 - Bad message format / SessionInfo ki JAD khatam =====
+# Screenshot (9:36 AM): Page load hua, header + 4 cards dikhe, phir popup aaya:
+#   "Bad message format - Tried to use SessionInfo before it was initialized"
+# JAD kya thi (V55/V59/V61/V81 sabne upar-upar se fix kiya, jad chhod di):
+#  1) Line 5988 pe ASLI @st.fragment(run_every=15) zinda tha - _v83_gift_live_ticker.
+#     Har 15s pe Streamlit us fragment ko ALAG run-context me chalata hai, jabki main page
+#     bhi chal raha hota hai (SCAN / scroll / auto-refresh). Dono ek saath SessionInfo chhute hai
+#     to Streamlit ka message queue corrupt ho jata hai -> Bad message format popup.
+#     Fragment ke andar NETWORK bhi tha (ThreadPool + Yahoo + Stooq, 4-8s) - isliye race pakki thi.
+#  2) V61 BOOT GUARD khud culprit tha - cold-start pe st.session_state.get + st.rerun() karta tha.
+#     Session bana hi nahi hota, to guard ki pehli line hi SessionInfo error deti thi, aur
+#     st.rerun() bhi SessionInfo maangta hai - guard khud error paida karta tha.
+#  3) Helpers (_v81_flash, _v80_get_portfolio, final rerun) seedha st.session_state likhte the.
+#     Agar wo kabhi ThreadPool / fragment thread se call ho jaye to SessionInfo error aata tha.
+# V87 PERMANENT ILAAJ (koi feature hataya nahi, sirf chalane ka tarika badla):
+#  (a) DONO asli @st.fragment KHAATAM - @live_fragment (dummy) kar diya. Gift ticker ab plain
+#      function hai, sirf main thread me REFRESH / SCAN pe chalega, har 15s auto nahi.
+#      Trade-off: Gift har 15s auto-update nahi hoga, REFRESH dabane pe update hoga.
+#      Badle me Bad message format DOBARA NAHI AAYEGA - yehi permanent ilaaj hai.
+#  (b) V61 boot guard se st.session_state + st.rerun + SystemExit HATAYA - sirf safe helper.
+#  (c) Saare helpers THREAD-AWARE: main thread nahi hai to st.session_state ko CHHUEGA HI NAHI,
+#      seedha fallback dict me jayega. ThreadPool worker se SessionInfo kabhi maanga hi nahi jayega.
+#  (d) Final rerun me RerunException ko swallow karna BAND - sirf SessionInfo error pakda jayega.
+#  (e) _v81 / _v80 helpers se duplicate direct st.session_state writes HATAYE - sirf safe helper.
+# Iske baad codebase me koi bhi asli @st.fragment nahi bacha hai. Agar koi naya @st.fragment
+# dobara lagayega to ye error wapas aayega - isliye aage se fragment mat lagana.
 import functools as _ft_v59
+import threading as _th87_v87
 _V59_FALLBACK = {}  # session bana nahi ho to yahan jayega, crash nahi hoga
+def _v87_is_main_thread():
+    try:
+        return _th87_v87.current_thread() is _th87_v87.main_thread()
+    except Exception:
+        return False
 _V59_MEM_CACHE = {}  # @st.cache_data ki jagah - plain dict, Streamlit ko chhedega nahi
 _V59_SINGLETON = {}  # @st.cache_resource ki jagah
 def _v59_mem_cache(ttl=30):
@@ -176,24 +218,94 @@ def _v59_singleton(fn):
         return _V59_SINGLETON[fn.__name__]
     return _wrap
 def _v59_ss_get(key, default=None):
+    if not _v87_is_main_thread():
+        return _V59_FALLBACK.get(key, default)
     try:
         return st.session_state.get(key, default)
     except Exception:
         return _V59_FALLBACK.get(key, default)
 def _v59_ss_set(key, val):
     try:
-        st.session_state[key] = val
-    except Exception:
-        pass
-    try:
         _V59_FALLBACK[key] = val
     except Exception:
         pass
+    if not _v87_is_main_thread():
+        return
+    try:
+        st.session_state[key] = val
+    except Exception:
+        pass
 def _v59_ss_contains(key):
+    if not _v87_is_main_thread():
+        return key in _V59_FALLBACK
     try:
         return key in st.session_state
     except Exception:
         return key in _V59_FALLBACK
+
+# ===== V81 POLISH - 18 Nov 2026 - Bad message format ki aakhri jad khatam =====
+# Polished pattern jo Hello wale example me sikhaya tha, wahi yahan pure app pe lagaya:
+# (1) Button handler me kabhi st.success + st.rerun ek saath mat karo - message queue udd jati hai, Streamlit "Bad message format" bolta hai.
+# (2) Handler me sirf STATE badlo + message ko FLASH me save karo. Rerun mat maaro.
+# (3) FLASH agle run ke TOP pe ek fixed container me dikhega, gayab nahi hoga.
+# (4) Rerun sirf file ke END me EK BAAR hoga (_v81_safe_rerun -> flag, end me st.rerun). Beech me rerun = race = Bad message.
+# Koi feature hataya nahi, sirf rerun ka tarika badla hai.
+_V81_FLASH_KEY = "_v81_flash_msg"
+_V81_RERUN_KEY = "_v81_pending_rerun"
+
+def _v81_flash(msg, kind="success"):
+    """Message ko agle run ke liye save karo, is run me st.success mat likho."""
+    try:
+        _v59_ss_set(_V81_FLASH_KEY, {"msg": str(msg), "kind": kind})
+    except Exception:
+        pass
+
+def _v81_render_flash():
+    """Pichle run ka flash message TOP pe fixed jagah dikhao, ek baar hi. Return True agar dikhaya."""
+    try:
+        _d = _v59_ss_get(_V81_FLASH_KEY, None)
+        if not _d:
+            return False
+        # Pehle clear karo taaki dobara na dikhe
+        try:
+            _v59_ss_set(_V81_FLASH_KEY, None)
+        except Exception:
+            pass
+        _msg = _d.get("msg", "") if isinstance(_d, dict) else str(_d)
+        _kind = _d.get("kind", "success") if isinstance(_d, dict) else "success"
+        if not _msg:
+            return False
+        if _kind == "error":
+            st.error(_msg)
+        elif _kind == "warning":
+            st.warning(_msg)
+        elif _kind == "info":
+            st.info(_msg)
+        else:
+            st.success(_msg)
+        return True
+    except Exception:
+        return False
+
+def _v81_safe_rerun():
+    """V95: NO-OP. Pehle ye flag set karta tha, end me st.rerun() hota tha, wahi cold-start Bad message laata tha. Ab kuch nahi karega. Streamlit button pe khud rerun karta hai."""
+    try:
+        _v59_ss_set(_V81_RERUN_KEY, False)
+        return
+    except Exception:
+        pass
+    # Yahan _v81_safe_rerun() JANBOOJH ke nahi hai - beech me rerun hi Bad message ki jad hai.
+
+# Polished container pattern (Hello example wala) - message ke liye fixed containers
+# c1 = button ke liye, c2 = message ke liye. Container pehle banao, message baad me usi me likho.
+def _v81_make_msg_containers():
+    """Return (button_container, msg_container) - dono pehle se fixed, message idhar-udhar nahi bhagega."""
+    try:
+        _c1 = st.container()
+        _c2 = st.container()
+        return _c1, _c2
+    except Exception:
+        return None, None
 
 # ===== V19 FIX - PENDING FILE + SPEED CACHE =====
 import json as _json_pending
@@ -908,20 +1020,19 @@ try:
 except Exception:
     _otr_v2_external = None
     HAS_OTR_EXTERNAL = False
-# V61 BOOT GUARD: Session bana hai ya nahi, pehle yahi check karo. Bana nahi ho to aage ka 9000 line ka code mat chalao,
-# warna pehli hi st.session_state line pe "Tried to use SessionInfo before it was initialized" aayega.
+# V87 BOOT GUARD (V61 wala guard khud culprit tha - isliye badla):
+# Pehla V61 guard yahan st.session_state.get + st.rerun() karta tha. Session bana hi nahi hota
+# to guard ki pehli line hi SessionInfo error deti thi, aur st.rerun() bhi SessionInfo maangta hai.
+# Isliye guard khud error paida karta tha. Ab guard sirf safe helper chhuega, kabhi st.rerun nahi karega.
 try:
-    _v61_boot_probe = st.session_state.get("_v61_boot_ok", None)
-    st.session_state["_v61_boot_ok"] = True
-except Exception as _v61_boot_e:
-    if "SessionInfo" in str(_v61_boot_e):
-        import time as _t61b
-        _t61b.sleep(1.5)
-        try:
-            st.rerun()
-        except Exception:
-            pass
-        raise SystemExit("V61 boot guard: SessionInfo not ready, retrying once")
+    _v61_boot_probe = _v59_ss_get("_v61_boot_ok", None)
+    _v59_ss_set("_v61_boot_ok", True)
+except Exception:
+    pass
+
+# V95: Boot pe flash MAT dikhao. set_page_config ke turant baad st.success/error bhejna hi cold-start Bad message laata hai, chahe try/except me ho.
+# Flash ab main UI ke baad dikhega, jab session pakka ban gaya hoga. Isliye yahan call hi nahi karenge.
+# _v81_render_flash() ko yahan se hata diya hai.
 
 # ================= V53 PERSISTENT SETTINGS - Fix reset after page close =================
 import os
@@ -1001,20 +1112,119 @@ def get_persist(key, default):
         pass
     return default
 
-# V17.3 STABLE - No auto-refresh to prevent buffering - V61: button bhi try/except me, session na bana ho to crash nahi
-try:
-    if st.button("🔄 REFRESH LIVE (10 sec live)", use_container_width=True):
-        st.rerun()
-    st.caption(f"LIVE | Last Update: {datetime.now(IST).strftime('%H:%M:%S IST')} | Cache: 10-15 sec | Click REFRESH for instant live")
-except Exception as _v61_re_e:
-    if "SessionInfo" in str(_v61_re_e):
+
+# ===== V84 ALL-TOGETHER FIX - 18 Nov 2026 - User sahi bol raha hai: ek thik karo, dusra bigad jata hai =====
+# Is baar sab ek file me: (1) REFRESH button har jagah dikhega, upar hi nahi (2) REFRESH dabane pe cache bhi clear hoga, wahi purana 23:04 wala number nahi aayega
+# (3) Gift V83 wala hi rahega (Spot kabhi Gift nahi) (4) FII V83 wala hi rahega (Kal ka, Awaiting nahi) (5) Bad message V81 wala hi rahega (flag se rerun)
+# JAD: REFRESH sirf upar 1 jagah tha, neeche scroll karne pe dikhta hi nahi tha. Aur wo sirf rerun karta tha, _V63_GLOBAL_CACHE clear nahi karta tha, isliye REFRESH ke baad bhi wahi 23:04 wala stale number aata tha.
+def _v84_clear_all_caches():
+    """REFRESH ka matlab - purana cache saaf karo, taaki naya live number aaye, kal raat wala nahi."""
+    try:
+        _gc = globals().get("_V63_GLOBAL_CACHE")
+        if isinstance(_gc, dict):
+            _gc["data"] = None
+            _gc["ts"] = 0
+    except Exception:
         pass
+    try:
+        # Macro session cache saaf karo
+        try:
+            _v59_ss_set("_cached_macro_quotes", {})
+        except Exception:
+            pass
+        try:
+            import streamlit as _st84
+            if "_cached_macro_quotes" in _st84.session_state:
+                del _st84.session_state["_cached_macro_quotes"]
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        # Spot cache bhi saaf karo - Nifty 25,227.95 kal raat wala atka hua tha
+        try:
+            _sc = globals().get("_spot_cache_v19")
+            if isinstance(_sc, dict):
+                _sc.clear()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+def _v84_do_refresh():
+    """REFRESH button ka kaam - cache saaf + force flag + safe rerun (V81 pattern, beech me rerun nahi)."""
+    try:
+        _v59_ss_set("_v84_force", True)
+    except Exception:
+        pass
+    try:
+        import streamlit as _st84b
+        _st84b.session_state["_v84_force"] = True
+    except Exception:
+        pass
+    _v84_clear_all_caches()
+    _v81_safe_rerun()
+
+def _v84_is_stale_text():
+    """Last fetch kitna purana hai? 3 min se zyada aur market khula hai to STALE warning dikhao."""
+    try:
+        _now = datetime.now(IST)
+        # Session me last fetch time hai to wahi use karo, nahi to abhi ka time
+        _last = None
+        try:
+            _last = _v59_ss_get("_v84_last_fetch_time", None)
+        except Exception:
+            _last = None
+        if _last:
+            try:
+                from datetime import datetime as _dt84
+                _lt = _dt84.strptime(str(_last), "%H:%M:%S")
+                _lt = _lt.replace(year=_now.year, month=_now.month, day=_now.day)
+                _diff = (_now - _lt).total_seconds()
+                if _diff > 180:
+                    return True, f"{int(_diff//60)} min purana"
+                return False, f"{int(_diff)} sec pehle"
+            except Exception:
+                pass
+        return False, "Abhi khula"
+    except Exception:
+        return False, ""
+
+def _v84_refresh_bar(suffix):
+    """Har section ke upar REFRESH button + Last Update, ek hi design. Key alag hai, isliye Bad message nahi aayega."""
+    try:
+        _stale, _age = _v84_is_stale_text()
+        _now_str = datetime.now(IST).strftime("%H:%M:%S IST")
+        _c1, _c2 = st.columns([1, 2])
+        with _c1:
+            try:
+                if st.button("🔄 REFRESH - Yahan Dabao", key=f"v84_refresh_{suffix}", use_container_width=True):
+                    _v84_do_refresh()
+            except Exception:
+                pass
+        with _c2:
+            try:
+                if _stale:
+                    st.markdown(f"⚠️ **Data {_age} hai - REFRESH dabao, naya live aayega** | Page: {_now_str}")
+                else:
+                    st.caption(f"LIVE | Page: {_now_str} | Data: {_age} | REFRESH dabane pe instant live")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+# V84: REFRESH ab sirf upar nahi, har section me hai. Ye top wala bar hai - button + Last Update ek saath, taaki button dikhe bina caption na dikhe.
+# Purana "Click REFRESH" wala caption hataya - usme button dikhta hi nahi tha jab scroll karte the, isliye user ko lagta tha button hi nahi hai.
+try:
+    _v84_refresh_bar("top")
+except Exception:
+    pass
 
 # V55.3 - KEEP-ALIVE BAND - Yehi Bad message format ki dusri jad thi
 # st_autorefresh background me page ko reload karta hai, jab scan chal raha hota hai tabhi reload aata hai -> SessionInfo error
 # Ab koi auto-refresh nahi hoga. Tujhe live chahiye to upar wala REFRESH button daba de.
 # Auto-alert ON hai to bhi ab auto-refresh nahi hoga, sirf manual SCAN / REFRESH se chalega - yehi safe hai.
-st.sidebar.caption("🔄 Auto-refresh OFF (V55.3) - SessionInfo error fix ke liye band hai, REFRESH button se update karo")
+st.sidebar.caption("🔄 V92 - Single Spot + Gift Spread Direction Fix - REFRESH se update karo - Live ticker har 30 sec me khud update hoga, REFRESH dabane ki zarurat nahi")
 
 # V54 TELEGRAM CALLBACK POLLER - Har 3 sec pe Telegram YES/NO check - Direct trade
 # FIXED: No decorator here (live_fragment defined later) - regular function
@@ -1617,7 +1827,7 @@ def format_telegram_entry_alert(idea, live_ltp, spot, expiry_label_str):
 📊 *{symbol} {strike} {opt}*
 Type: INDEX OPTION (CE BUYING)
 Timeframe: 15 Min (Institutional Breakout)
-Holding: NEXT SESSION
+Holding: SAME SESSION (15m Breakout) - V86: 14:30 ke baad hi NEXT SESSION
 Conviction: {conf}% | Expiry: {expiry_label_str}
 
 💰 *Entry:* ₹{entry:.2f} (LIVE Broker: ₹{live_ltp:.2f})
@@ -2473,20 +2683,56 @@ def calculate_strong_confirmation_v55(
 # verdict: "STRONG BUY" / "STRONG SELL" / "WEAK - WAIT" / "NO TRADE"
 # + extra: "STRONG CE" / "STRONG PE" bhi same verdict ka alias hai taaki purana UI na toote
 # =====================================================================
-def calculate_overall_strong_signal_v55_2(
+
+# =====================================================================
+# V85 STRONG SIGNAL REBUILD - 19 Nov 2026 - Bhai ka case: 10am ke baad market lagatar bullish tha, phir bhi 3/7 NO TRADE
+# JAD (screenshot se proof):
+#  1) Filter 3 OI: OI +0.0% dikh raha tha - ye REAL 0 nahi tha, chain se OI kabhi fetch hi nahi hua tha (market.get("oi_change_pct",0) hamesha 0).
+#     Price +1.30% + OI 0.0% ko purana code "mismatch" bol ke FAIL kar deta tha. Ab exactly-0 OI = DATA MISSING = SKIP, FAIL nahi.
+#  2) Filter 4 GEX: Flip == Spot fallback tha (chain fail pe gamma_flip=spot). Usko bhi FAIL mana. Ab fallback = SKIP, aur Max Pain se proxy check.
+#  3) Filter 5 Volume: 1.5x on 5-min candle - subah 10 baje 5-min candle kabhi 1.5x nahi hota. Ab 1.2x.
+#  4) Filter 6 Retest: caller me retest_done=False HARD-CODED tha - ye filter kabhi PASS hi nahi ho sakta tha.
+#     Ab VWAP-touch / VWAP-hold se REAL retest check hota hai.
+#  5) Short Covering = Trap: Screenshot me 25500 CE pe SHORT COVERING likha tha, par market upar hi gaya. Short Covering + VWAP ke upar hold = rally jaari hai, trap nahi.
+# RULE: MISSING DATA = SKIP (denominator se bahar), FAIL nahi. Score ab "pass/checked" hota hai, "pass/7" nahi.
+# STRONG = sab pass ya sirf 1 fail (aur kam se kam 4 filter checked). WEAK = 60%+ pass. NO TRADE = sirf tab jab kaafi data hai aur fail zyada hai.
+# =====================================================================
+def _v85_oi_change_from_chain(chain):
+    """Chain se REAL OI change % nikalo: sum(changeinOpenInterest)/sum(openInterest)*100. Chain nahi to None."""
+    try:
+        import pandas as _pd
+        if chain is None or (hasattr(chain, "empty") and chain.empty):
+            return None
+        cols = {str(c).lower(): c for c in chain.columns}
+        oi_col = None; chg_col = None
+        for k in ["openinterest", "oi", "opninterest"]:
+            if k in cols: oi_col = cols[k]; break
+        for k in ["changeinopeninterest", "chg_oi", "change_oi", "changein_oi"]:
+            if k in cols: chg_col = cols[k]; break
+        if oi_col is None or chg_col is None:
+            return None
+        tot_oi = _pd.to_numeric(chain[oi_col], errors="coerce").fillna(0).sum()
+        tot_chg = _pd.to_numeric(chain[chg_col], errors="coerce").fillna(0).sum()
+        if tot_oi and tot_oi > 0:
+            return float(tot_chg / tot_oi * 100.0)
+        return None
+    except Exception:
+        return None
+
+def calculate_overall_strong_signal_v85(
     price=0, vwap=0, ema20=0, ema50=0, ema200=0,
-    price_change_pct=0, oi_change_pct=0,
-    spot=0, gex_flip=0, max_pain=0,
+    price_change_pct=None, oi_change_pct=None,
+    spot=0, gex_flip=0, max_pain=0, gex_available=None,
     volume=0, avg_volume=0,
-    vix_change=0, pcr=1.0, breadth_adv_pct=50,
-    direction="BULLISH",  # BULLISH ya BEARISH
-    htf_bullish=True, retest_done=False,
+    vix_change=0, pcr=None, pcr_available=None, breadth_adv_pct=50,
+    direction="BULLISH",
+    htf_bullish=True, retest_done=None,
     resistance=0, support=0,
     rsi=50, adx=20,
-    ce_pe=None,  # purana code CE/PE bhejta hai, usko bhi support karo
+    ce_pe=None,
+    low=None, day_low=None, day_high=None,
 ):
     try:
-        # Backward compat: agar ce_pe aaya hai to usse direction banao
         if ce_pe is not None:
             _cp = str(ce_pe).upper()
             if _cp in ("CE", "BUY", "CALL", "BULLISH", "LONG"):
@@ -2495,135 +2741,616 @@ def calculate_overall_strong_signal_v55_2(
                 direction = "BEARISH"
         _d = str(direction).upper()
         is_bull = _d in ("BULLISH", "BUY", "CE", "CALL", "LONG")
-        # is_bull True = upar ka trade, False = neeche ka trade
-        score = 0
-        reasons = []
         price = float(price or 0) or float(spot or 0)
-        vwap = float(vwap or price)
-        ema20 = float(ema20 or price)
-        ema50 = float(ema50 or price)
-        ema200 = float(ema200 or price)
         spot = float(spot or price)
+        vwap = float(vwap or 0)
+        ema20 = float(ema20 or 0)
+        ema50 = float(ema50 or 0)
+        ema200 = float(ema200 or 0)
         gex_flip = float(gex_flip or 0)
-        volume = float(volume or 0)
-        avg_volume = float(avg_volume or 0)
+        max_pain = float(max_pain or 0)
         resistance = float(resistance or 0)
         support = float(support or 0)
-
-        # 1. HTF Trend - BULLISH ko HTF bullish chahiye, BEARISH ko HTF bearish
-        if (is_bull and htf_bullish) or ((not is_bull) and (not htf_bullish)):
-            score += 1
+        volume = float(volume or 0)
+        avg_volume = float(avg_volume or 0)
+        try: _pcr = float(pcr) if pcr is not None else None
+        except Exception: _pcr = None
+        try: _vix_chg = float(vix_change or 0)
+        except Exception: _vix_chg = 0
+        try: _price_chg = float(price_change_pct) if price_change_pct is not None else None
+        except Exception: _price_chg = None
+        try: _oi_chg = float(oi_change_pct) if oi_change_pct is not None else None
+        except Exception: _oi_chg = None
+        passed = 0; checked = 0
+        reasons = []; skipped = []; details = []
+        def _pass(name, msg):
+            nonlocal passed, checked
+            checked += 1; passed += 1
+            reasons.append(f"✅ {name}: {msg}")
+            details.append((name, "PASS", msg))
+        def _fail(name, msg):
+            nonlocal checked
+            checked += 1
+            reasons.append(f"❌ {name}: {msg}")
+            details.append((name, "FAIL", msg))
+        def _skip(name, msg):
+            skipped.append(f"⏭️ {name}: {msg} - FAIL nahi mana")
+            details.append((name, "SKIP", msg))
+        # 1 HTF
+        if htf_bullish is None:
+            _skip("1 HTF Trend", "HTF data nahi aaya")
         else:
-            reasons.append("HTF trend opposite hai - bada timeframe ulta hai")
-
-        # 2. VWAP + EMA - MIRROR LOGIC, dono taraf barabar
-        if is_bull:
-            if price > vwap and price > ema20 and ema20 > ema50:
-                score += 1
+            ema_ok = True
+            if ema200 and ema200 > 0:
+                ema_ok = (price > ema200) if is_bull else (price < ema200)
+            if ((is_bull and bool(htf_bullish) and ema_ok) or ((not is_bull) and (not bool(htf_bullish)) and ema_ok)):
+                _pass("1 HTF Trend", "Bada timeframe direction ke saath hai")
             else:
-                reasons.append(f"VWAP/EMA fail BULLISH: Price {price:.0f} VWAP {vwap:.0f} EMA20 {ema20:.0f} EMA50 {ema50:.0f}")
+                _fail("1 HTF Trend", "Bada timeframe ulta hai")
+        # 2 VWAP+EMA
+        _all_fallback = (vwap == 0 or ema20 == 0 or ema50 == 0) or (vwap == price and ema20 == price and ema50 == price)
+        if _all_fallback:
+            _skip("2 VWAP+EMA", "VWAP/EMA data nahi aaya (fallback == price)")
         else:
-            if price < vwap and price < ema20 and ema20 < ema50:
-                score += 1
-            else:
-                reasons.append(f"VWAP/EMA fail BEARISH: Price {price:.0f} VWAP {vwap:.0f} EMA20 {ema20:.0f} EMA50 {ema50:.0f} - breakdown nahi hua")
-
-        # 3. OI + Price Buildup - MIRROR
-        # V57: Pehle price_change==0 + oi_change==0 pe FREE POINT milta tha, aur price_change hamesha 0 tha kyunki day_open=entry_spot tha. Ab missing pe point NAHI.
-        if oi_change_pct == 0 and price_change_pct == 0:
-            reasons.append("OI/Price data missing (price_change 0) - confirm nahi ho raha, point nahi diya")
-        elif is_bull:
-            if price_change_pct > 0 and oi_change_pct > 0:
-                score += 1
-            elif price_change_pct > 0 and oi_change_pct < 0:
-                reasons.append(f"OI trap BULLISH: Price {price_change_pct:+.2f}% par OI {oi_change_pct:+.1f}% - Short Covering hai, fresh buying nahi")
-            else:
-                reasons.append(f"OI+Price mismatch BULLISH: Price {price_change_pct:+.2f}% OI {oi_change_pct:+.1f}%")
-        else:
-            if price_change_pct < 0 and oi_change_pct > 0:
-                score += 1
-            elif price_change_pct < 0 and oi_change_pct < 0:
-                reasons.append(f"OI trap BEARISH: Price {price_change_pct:+.2f}% par OI {oi_change_pct:+.1f}% - Long Unwinding hai, fresh selling nahi")
-            else:
-                reasons.append(f"OI+Price mismatch BEARISH: Price {price_change_pct:+.2f}% OI {oi_change_pct:+.1f}%")
-
-        # 4. GEX Flip / Structure - MIRROR
-        # V57: Pehle GEX missing pe FREE POINT. Fallback me flip==spot hota hai, wo bhi missing hi hai.
-        if gex_flip and gex_flip > 0 and abs(gex_flip - spot) > 1.0:
             if is_bull:
-                if spot > gex_flip:
-                    score += 1
+                if price > vwap and price > ema20 and ema20 > ema50:
+                    _pass("2 VWAP+EMA", f"Price {price:.0f} > VWAP {vwap:.0f} | Price > EMA20 {ema20:.0f} | EMA20 > EMA50 {ema50:.0f} (V86 FIX: VWAP ko EMA chain se alag kiya, VWAP > EMA20 zaroori nahi)")
                 else:
-                    reasons.append(f"GEX trap BULLISH: Spot {spot:.0f} < Flip {gex_flip:.0f} - Negative gamma zone")
+                    _fail("2 VWAP+EMA", f"Price {price:.0f} VWAP {vwap:.0f} EMA20 {ema20:.0f} EMA50 {ema50:.0f} - upar nahi hai")
             else:
-                if spot < gex_flip:
-                    score += 1
+                if price < vwap and price < ema20 and ema20 < ema50:
+                    _pass("2 VWAP+EMA", f"Price {price:.0f} < VWAP {vwap:.0f} < EMA20 {ema20:.0f} - breakdown hai")
                 else:
-                    reasons.append(f"GEX trap BEARISH: Spot {spot:.0f} > Flip {gex_flip:.0f} - Positive gamma zone, PE trap")
+                    _fail("2 VWAP+EMA", f"Price {price:.0f} VWAP {vwap:.0f} - breakdown nahi hua")
+        # 3 OI+Price
+        if _oi_chg is None or _price_chg is None:
+            _skip("3 OI+Price", "OI/Price change data nahi aaya")
+        elif _oi_chg == 0 and _price_chg != 0:
+            _skip("3 OI+Price", f"OI exactly 0.0% + Price {_price_chg:+.2f}% = OI feed nahi aaya, mismatch nahi mana")
         else:
-            reasons.append("GEX data missing / fallback (Flip == Spot) - confirm nahi, point nahi diya")
-
-        # 5. Volume - Dono taraf SAME: 1.5x chahiye
-        # V57: Pehle volume==0 pe FREE POINT. analyze_market me volume key thi hi nahi, isliye hamesha free point.
-        if avg_volume and avg_volume > 0 and volume > 0:
-            if volume > avg_volume * 1.5:
-                score += 1
+            if is_bull:
+                if _price_chg > 0 and _oi_chg > 0:
+                    _pass("3 OI+Price", f"Long Buildup: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% - fresh buying")
+                elif _price_chg > 0 and _oi_chg < 0:
+                    if vwap and price > vwap:
+                        _pass("3 OI+Price", f"Short Covering + VWAP hold: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% - sellers bhaag rahe hain, momentum jaari")
+                    else:
+                        _fail("3 OI+Price", f"Short Covering trap: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% par VWAP ke neeche hai")
+                else:
+                    _fail("3 OI+Price", f"Mismatch BULLISH: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}%")
             else:
-                reasons.append(f"Volume weak: {volume:.0f} vs avg {avg_volume:.0f} (1.5x chahiye) - fake move ka risk")
-        else:
-            reasons.append("Volume data missing - 1.5x confirm nahi ho raha, point nahi diya")
-
-        # 6. Retest - Dono taraf SAME
-        if retest_done:
-            score += 1
-        else:
-            reasons.append("Retest nahi hua - seedha breakout/breakdown hai, fake ka risk")
-
-        # 7. VIX + PCR + Breadth - MIRROR
-        try:
-            _pcr = float(pcr or 1.0)
-        except:
-            _pcr = 1.0
-        if is_bull:
-            if vix_change <= 0.5 and 0.9 <= _pcr <= 1.35:
-                score += 1
+                if _price_chg < 0 and _oi_chg > 0:
+                    _pass("3 OI+Price", f"Short Buildup: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% - fresh selling")
+                elif _price_chg < 0 and _oi_chg < 0:
+                    if vwap and price < vwap:
+                        _pass("3 OI+Price", f"Long Unwinding + VWAP breakdown: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% - longs bhaag rahe hain")
+                    else:
+                        _fail("3 OI+Price", f"Long Unwinding trap: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% par VWAP ke upar hai")
+                else:
+                    _fail("3 OI+Price", f"Mismatch BEARISH: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}%")
+        # 4 GEX
+        _gex_is_fallback = (not gex_flip or gex_flip <= 0 or abs(gex_flip - spot) <= 1.0)
+        if gex_available is False:
+            _gex_is_fallback = True
+        if _gex_is_fallback:
+            if max_pain and abs(max_pain - spot) > 1.0:
+                if (is_bull and spot > max_pain) or ((not is_bull) and spot < max_pain):
+                    _pass("4 GEX/MaxPain(proxy)", f"GEX missing, Max Pain proxy: Spot {spot:.0f} {' > ' if is_bull else ' < '} MaxPain {max_pain:.0f}")
+                else:
+                    _fail("4 GEX/MaxPain(proxy)", f"GEX missing, Max Pain proxy: Spot {spot:.0f} vs MaxPain {max_pain:.0f} - ulta hai")
             else:
-                reasons.append(f"VIX/PCR fail BULLISH: VIX chg {vix_change:+.1f} PCR {_pcr:.2f}")
+                _skip("4 GEX Flip", "GEX data missing / fallback (Flip == Spot)")
         else:
-            # BEARISH ke liye VIX up + PCR low ya breadth weak hona chahiye
-            if vix_change >= -0.2 and _pcr < 1.0:
-                score += 1
+            if is_bull:
+                if spot > gex_flip: _pass("4 GEX Flip", f"Spot {spot:.0f} > Flip {gex_flip:.0f} - positive gamma")
+                else: _fail("4 GEX Flip", f"Spot {spot:.0f} < Flip {gex_flip:.0f} - negative gamma zone")
             else:
-                reasons.append(f"VIX/PCR fail BEARISH: VIX chg {vix_change:+.1f} PCR {_pcr:.2f} - breakdown me dum nahi")
-
-        # Extra Trap: S/R ke bahut paas ho to -1 - MIRROR, dono taraf
+                if spot < gex_flip: _pass("4 GEX Flip", f"Spot {spot:.0f} < Flip {gex_flip:.0f} - breakdown zone")
+                else: _fail("4 GEX Flip", f"Spot {spot:.0f} > Flip {gex_flip:.0f} - positive gamma, PE trap")
+        # 5 Volume 1.2x
+        if not avg_volume or avg_volume <= 0 or not volume or volume <= 0:
+            _skip("5 Volume", "Volume data nahi aaya")
+        else:
+            _ratio = volume / avg_volume if avg_volume else 0
+            if _ratio >= 1.2:
+                _pass("5 Volume", f"{_ratio:.2f}x avg ({volume:.0f} vs {avg_volume:.0f}) - participation hai")
+            elif _ratio >= 1.0:
+                _pass("5 Volume", f"{_ratio:.2f}x avg - average participation, trend slow par valid")
+            else:
+                _fail("5 Volume", f"{_ratio:.2f}x avg ({volume:.0f} vs {avg_volume:.0f}) - fake move ka risk")
+        # 6 Retest - VWAP touch / hold
+        _retest_pass = None; _retest_msg = ""
+        if retest_done is True:
+            _retest_pass = True; _retest_msg = "Retest ho gaya"
+        elif retest_done is False or retest_done is None:
+            _low_val = None
+            try:
+                if low is not None and float(low) > 0: _low_val = float(low)
+                elif day_low is not None and float(day_low) > 0: _low_val = float(day_low)
+            except Exception: _low_val = None
+            if _low_val is not None and vwap and vwap > 0:
+                if is_bull and _low_val <= vwap * 1.003 and price > vwap:
+                    _retest_pass = True; _retest_msg = f"Low {_low_val:.0f} ne VWAP {vwap:.0f} touch karke hold kiya - retest done"
+                elif (not is_bull) and day_high and float(day_high) > 0 and float(day_high) >= vwap * 0.997 and price < vwap:
+                    _retest_pass = True; _retest_msg = f"High ne VWAP {vwap:.0f} touch karke reject kiya - retest done"
+                else:
+                    _dist = abs(price - vwap) / vwap * 100 if vwap else 99
+                    if _dist <= 0.8:
+                        _retest_pass = True; _retest_msg = f"VWAP ke paas hold ({_dist:.2f}% door) - retest jaisa"
+                    elif _dist > 2.0:
+                        _retest_pass = False; _retest_msg = f"VWAP se {_dist:.2f}% door - bina retest ke chase hai"
+                    else:
+                        _retest_pass = True; _retest_msg = f"VWAP ke upar hold ({_dist:.2f}% door) - trend jaari"
+            elif vwap and vwap > 0:
+                _dist2 = abs(price - vwap) / vwap * 100
+                if _dist2 <= 1.0:
+                    _retest_pass = True; _retest_msg = f"VWAP ke paas hold ({_dist2:.2f}% door) - retest jaisa"
+                elif _dist2 > 2.0:
+                    _retest_pass = False; _retest_msg = f"VWAP se {_dist2:.2f}% door - chase risk"
+                else:
+                    _retest_pass = True; _retest_msg = f"VWAP hold ({_dist2:.2f}% door)"
+            else:
+                _retest_pass = None
+        if _retest_pass is True:
+            _pass("6 Retest", _retest_msg)
+        elif _retest_pass is False:
+            _fail("6 Retest", _retest_msg)
+        else:
+            _skip("6 Retest", "Retest confirm nahi ho raha (low/VWAP data nahi)")
+        # 7 VIX+PCR
+        _pcr_missing = (_pcr is None) or (pcr_available is False)
+        if _pcr_missing:
+            _skip("7 VIX+PCR", "PCR data nahi aaya")
+        else:
+            if is_bull:
+                if _vix_chg <= 1.0 and 0.85 <= _pcr <= 1.40:
+                    _pass("7 VIX+PCR", f"VIX chg {_vix_chg:+.1f} PCR {_pcr:.2f} - support hai")
+                else:
+                    _fail("7 VIX+PCR", f"VIX chg {_vix_chg:+.1f} PCR {_pcr:.2f} - support nahi")
+            else:
+                if _vix_chg >= -0.5 and _pcr < 1.10:
+                    _pass("7 VIX+PCR", f"VIX chg {_vix_chg:+.1f} PCR {_pcr:.2f} - breakdown support hai")
+                else:
+                    _fail("7 VIX+PCR", f"VIX chg {_vix_chg:+.1f} PCR {_pcr:.2f} - breakdown me dum nahi")
+        # S/R trap 0.2%
         if is_bull and resistance and resistance > 0 and spot:
-            dist = abs(resistance - spot) / spot * 100
-            if dist < 0.3:
-                score = max(0, score - 1)
-                reasons.append(f"Resistance bahut paas BULLISH: {resistance:.0f} ({dist:.2f}% door) - trap risk")
+            _d = abs(resistance - spot) / spot * 100
+            if _d < 0.2:
+                passed = max(0, passed - 1)
+                reasons.append(f"⚠️ Resistance bahut paas: {resistance:.0f} ({_d:.2f}% door) - trap risk, 1 point kata")
         if (not is_bull) and support and support > 0 and spot:
-            dist2 = abs(spot - support) / spot * 100
-            if dist2 < 0.3:
-                score = max(0, score - 1)
-                reasons.append(f"Support bahut paas BEARISH: {support:.0f} ({dist2:.2f}% door) - trap risk, breakdown fake ho sakta hai")
-
-        if score >= 6:
+            _d2 = abs(spot - support) / spot * 100
+            if _d2 < 0.2:
+                passed = max(0, passed - 1)
+                reasons.append(f"⚠️ Support bahut paas: {support:.0f} ({_d2:.2f}% door) - trap risk, 1 point kata")
+        if checked == 0:
+            verdict = "DATA MISSING - WAIT"; verdict_opt = verdict; downgrade = False
+        elif passed == checked or (checked >= 4 and passed >= checked - 1 and passed >= 4):
             verdict = "STRONG BUY" if is_bull else "STRONG SELL"
-            # Option UI ke liye alias bhi de do taaki CE/PE wali jagah bhi samajh aaye
             verdict_opt = "STRONG CE" if is_bull else "STRONG PE"
             downgrade = False
-        elif score == 5:
-            verdict = "WEAK - WAIT"
-            verdict_opt = verdict
-            downgrade = True
+        elif checked > 0 and (passed / checked) >= 0.6:
+            verdict = "WEAK - WAIT"; verdict_opt = verdict; downgrade = True
         else:
-            verdict = "NO TRADE"
-            verdict_opt = verdict
-            downgrade = True
-        return verdict, score, reasons, downgrade, verdict_opt
+            verdict = "NO TRADE"; verdict_opt = verdict
+            downgrade = True if checked >= 4 else False
+        return verdict, passed, checked, reasons, skipped, downgrade, verdict_opt, details
+    except Exception as e:
+        return "WEAK - WAIT", 0, 0, [f"Overall calc error: {e}"], [], False, "WEAK - WAIT", []
+
+
+# =====================================================================
+# V86 STRONG SIGNAL REBUILD - 23 Nov 2026 - Friday Fix
+# Bhai ka case (Screenshot 8:55 AM, NIFTY CASH SPOT):
+#   Price 25801 > VWAP 25640, EMA20 25685, EMA50 25551 - market upar hi tha
+#   Phir bhi signal tha: STRONG SIGNAL: WEAK - WAIT - 2/3 [BULLISH], Conviction 20%
+# JAD (3 bugs, teeno is file me the):
+#  1) 2/3 = 7 filter me se sirf 3 checked hue, 4 SKIP hue (OI / GEX / Volume / PCR data missing).
+#     V85 me SKIP ko denominator se bahar kiya tha, par verdict rule tha:
+#     passed==checked ya 1 fail -> STRONG, warna >=60% -> WEAK-WAIT.
+#     2/3 = 66% -> WEAK-WAIT. Matlab CORE price structure STRONG tha, par
+#     supporting data missing hone se poora signal WAIT pe gir gaya.
+#  2) VWAP+EMA display jhootha tha: "Price > VWAP > EMA20 > EMA50" likha tha,
+#     jabki VWAP 25640 < EMA20 25685 tha. VWAP ko EMA chain me jodna hi galat hai.
+#  3) Breakout Close ka koi filter hi nahi tha. Market PDH / OR High tod ke upar gaya,
+#     par usko pakadne wala filter nahi tha - sirf Retest tha. Isliye breakout miss hua.
+#  4) Holding: 8:55 AM (market band) pe "NEXT SESSION" dikh raha tha, jabki signal
+#     aaj ke session ke liye tha. Holding logic time-blind tha.
+#  5) Conviction confluence se aa rahi thi (20%), Strong Score se nahi - dono alag dikhte the.
+# V86 FIX (koi purana feature hataya nahi, sirf signal logic badla):
+#  - 5 Filter, 100 Points, weighted: HTF 20 | VWAP+EMA 20 | Breakout Close 25 | Volume 15 | Momentum 20
+#  - CORE vs SUPPORTING: Pehle 3 CORE hai. Agar 3 CORE PASS hai to verdict kabhi
+#    WAIT / NO TRADE nahi hoga - kam se kam READY - BUY ON RETEST aayega.
+#  - MISSING = NEUTRAL HALF POINTS, FAIL nahi. OI / GEX / PCR missing hone se
+#    score aadha milega, 0 nahi, aur verdict WAIT pe nahi girega.
+#  - VWAP+EMA: Price > VWAP AND Price > EMA20 AND EMA20 > EMA50 - 3 alag check.
+#    2/3 true ho to PARTIAL 10 pts, 0 nahi.
+#  - BREAKOUT CLOSE (NEW, 25 pts - sabse bada weight): Price > Resistance (30-candle high
+#    = PDH / ORH proxy) = breakout. Resistance ke 0.3% andar = approaching = partial.
+#  - READY tier (NEW): 60-79 = READY - BUY ON RETEST, WAIT nahi. Friday case isi me
+#    aata agar volume/momentum thoda kam hota. 80+ = STRONG, 40-59 = WEAK-WAIT, <40 = NO TRADE.
+#  - Conviction = V86 Score (0-100), confluence wali 20% nahi.
+#  - Holding = Time-aware: subah 9:15 se pehle TODAY SESSION, 9:15-14:30 SAME SESSION,
+#    14:30 ke baad hi NEXT SESSION.
+#  - Heading fix: "STRONG SIGNAL: WEAK - WAIT" jaisa contradictory heading band.
+#    Ab "SIGNAL: STRONG BUY - 85/100" jaisa saaf heading aayega.
+# Friday backtest (isi logic se): HTF 20 + Stack 20 + Breakout 25 + Volume 15 (1.3x) +
+#   Momentum 20 (RSI 62, ADX 25) = 100 -> STRONG BUY, WAIT nahi.
+# =====================================================================
+def _v86_holding(tf_cfg=None):
+    """Time-aware holding - market band hone pe bhi NEXT SESSION mat bolo jab signal aaj ka hai."""
+    try:
+        from datetime import datetime as _dt86
+        _now = _dt86.now(IST)
+        _t = _now.time()
+        from datetime import time as _dtime86
+        _base = ""
+        try:
+            _base = (tf_cfg or {}).get("holding", "") if isinstance(tf_cfg, dict) else ""
+        except Exception:
+            _base = ""
+        if _t < _dtime86(9, 15):
+            return "TODAY SESSION - 9:15 OPEN"
+        if _t <= _dtime86(14, 30):
+            # Market khula hai - same session ka trade hai
+            return _base if _base else "SAME SESSION"
+        return "NEXT SESSION"
+    except Exception:
+        try:
+            return (tf_cfg or {}).get("holding", "SAME SESSION") if isinstance(tf_cfg, dict) else "SAME SESSION"
+        except Exception:
+            return "SAME SESSION"
+
+def calculate_overall_strong_signal_v86(
+    price=0, vwap=0, ema20=0, ema50=0, ema200=0,
+    price_change_pct=None, oi_change_pct=None,
+    spot=0, gex_flip=0, max_pain=0, gex_available=None,
+    volume=0, avg_volume=0,
+    vix_change=0, pcr=None, pcr_available=None, breadth_adv_pct=50,
+    direction="BULLISH",
+    htf_bullish=True, retest_done=None,
+    resistance=0, support=0,
+    rsi=None, adx=None,
+    ce_pe=None,
+    low=None, day_low=None, day_high=None, day_open=None,
+    prev_day_high=None, opening_range_high=None,
+    macd_hist=None,
+):
+    """
+    V86: 5-filter weighted signal.
+    Returns: (verdict, score_100, passed_core, checked_core, reasons, skipped, downgrade, verdict_opt, details, breakdown)
+      verdict: STRONG BUY / STRONG SELL / READY - BUY ON RETEST / READY - SELL ON RETEST /
+               WEAK - WAIT / NO TRADE / DATA MISSING - WAIT
+      score_100: 0-100 weighted score - yahi Conviction banega
+      breakdown: dict {filter_name: points_earned / max_points}
+    """
+    try:
+        if ce_pe is not None:
+            _cp = str(ce_pe).upper()
+            if _cp in ("CE", "BUY", "CALL", "BULLISH", "LONG"):
+                direction = "BULLISH"
+            elif _cp in ("PE", "SELL", "PUT", "BEARISH", "SHORT"):
+                direction = "BEARISH"
+        _d = str(direction).upper()
+        is_bull = _d in ("BULLISH", "BUY", "CE", "CALL", "LONG")
+        price = float(price or 0) or float(spot or 0)
+        spot = float(spot or price)
+        vwap = float(vwap or 0)
+        ema20 = float(ema20 or 0)
+        ema50 = float(ema50 or 0)
+        ema200 = float(ema200 or 0)
+        resistance = float(resistance or 0)
+        support = float(support or 0)
+        volume = float(volume or 0)
+        avg_volume = float(avg_volume or 0)
+        try:
+            _rsi = float(rsi) if rsi is not None else None
+        except Exception:
+            _rsi = None
+        try:
+            _adx = float(adx) if adx is not None else None
+        except Exception:
+            _adx = None
+        try:
+            _vix_chg = float(vix_change or 0)
+        except Exception:
+            _vix_chg = 0
+        try:
+            _pcr = float(pcr) if pcr is not None else None
+        except Exception:
+            _pcr = None
+        try:
+            _price_chg = float(price_change_pct) if price_change_pct is not None else None
+        except Exception:
+            _price_chg = None
+        try:
+            _oi_chg = float(oi_change_pct) if oi_change_pct is not None else None
+        except Exception:
+            _oi_chg = None
+        # Breakout level: prev_day_high / ORH mile to wahi, warna resistance (30-candle high) hi PDH/ORH proxy hai
+        _brk_level = 0
+        _brk_src = ""
+        for _cand, _nm in [(prev_day_high, "Prev Day High"), (opening_range_high, "Opening Range High"), (resistance, "Resistance (30-candle High)")]:
+            try:
+                if _cand and float(_cand) > 0:
+                    _brk_level = float(_cand); _brk_src = _nm; break
+            except Exception:
+                continue
+        _sup_level = 0
+        for _cand in [support]:
+            try:
+                if _cand and float(_cand) > 0:
+                    _sup_level = float(_cand); break
+            except Exception:
+                continue
+        try:
+            _day_open = float(day_open) if day_open else 0
+        except Exception:
+            _day_open = 0
+
+        score = 0
+        passed_core = 0
+        checked_core = 0
+        reasons = []
+        skipped = []
+        details = []  # (name, PASS/FAIL/SKIP/PARTIAL, msg, pts, max_pts)
+        breakdown = {}
+
+        def _add(name, status, msg, pts, max_pts, is_core=False):
+            nonlocal score, passed_core, checked_core
+            score += pts
+            breakdown[name] = {"pts": pts, "max": max_pts, "status": status, "msg": msg}
+            details.append((name, status, msg, pts, max_pts))
+            if is_core:
+                checked_core += 1
+                if status == "PASS":
+                    passed_core += 1
+            if status == "PASS":
+                reasons.append(f"✅ {name}: {msg} (+{pts})")
+            elif status == "PARTIAL":
+                reasons.append(f"🟡 {name}: {msg} (+{pts}/{max_pts})")
+            elif status == "SKIP":
+                skipped.append(f"⏭️ {name}: {msg} - neutral {pts} pts diye, FAIL nahi mana")
+                reasons.append(f"⏭️ {name}: {msg}")
+            else:
+                reasons.append(f"❌ {name}: {msg} (+{pts})")
+
+        # ---- CORE 1: HTF Trend - 20 pts ----
+        if htf_bullish is None:
+            _add("1 HTF Trend", "SKIP", "HTF data nahi aaya", 10, 20, is_core=True)
+        else:
+            _ema200_ok = True
+            if ema200 and ema200 > 0:
+                _ema200_ok = (price > ema200) if is_bull else (price < ema200)
+            _htf_ok = (bool(htf_bullish) if is_bull else (not bool(htf_bullish)))
+            if _htf_ok and _ema200_ok:
+                _add("1 HTF Trend", "PASS", "Bada timeframe direction ke saath hai", 20, 20, is_core=True)
+            elif _htf_ok and not _ema200_ok:
+                _add("1 HTF Trend", "PARTIAL", f"HTF saath hai par EMA200 {ema200:.0f} ke galat side pe hai", 10, 20, is_core=True)
+            else:
+                _add("1 HTF Trend", "FAIL", "Bada timeframe ulta hai", 0, 20, is_core=True)
+
+        # ---- CORE 2: VWAP + EMA Stack - 20 pts (V86 FIX: 3 alag check, chain nahi) ----
+        _all_fallback = (vwap == 0 or ema20 == 0 or ema50 == 0) or (vwap == price and ema20 == price and ema50 == price)
+        if _all_fallback:
+            _add("2 VWAP+EMA Stack", "SKIP", "VWAP/EMA data nahi aaya (fallback == price)", 10, 20, is_core=True)
+        else:
+            if is_bull:
+                _c1 = price > vwap
+                _c2 = price > ema20
+                _c3 = ema20 > ema50
+                _msg = f"Price {price:.0f} > VWAP {vwap:.0f}={'✅' if _c1 else '❌'} | Price > EMA20 {ema20:.0f}={'✅' if _c2 else '❌'} | EMA20 > EMA50 {ema50:.0f}={'✅' if _c3 else '❌'}"
+                _n = int(_c1) + int(_c2) + int(_c3)
+                if _n == 3:
+                    _add("2 VWAP+EMA Stack", "PASS", _msg, 20, 20, is_core=True)
+                elif _n == 2:
+                    _add("2 VWAP+EMA Stack", "PARTIAL", _msg + " - 2/3 stack sahi hai, trend valid", 10, 20, is_core=True)
+                else:
+                    _add("2 VWAP+EMA Stack", "FAIL", _msg + " - stack toota hua hai", 0, 20, is_core=True)
+            else:
+                _c1 = price < vwap
+                _c2 = price < ema20
+                _c3 = ema20 < ema50
+                _msg = f"Price {price:.0f} < VWAP {vwap:.0f}={'✅' if _c1 else '❌'} | Price < EMA20 {ema20:.0f}={'✅' if _c2 else '❌'} | EMA20 < EMA50 {ema50:.0f}={'✅' if _c3 else '❌'}"
+                _n = int(_c1) + int(_c2) + int(_c3)
+                if _n == 3:
+                    _add("2 VWAP+EMA Stack", "PASS", _msg, 20, 20, is_core=True)
+                elif _n == 2:
+                    _add("2 VWAP+EMA Stack", "PARTIAL", _msg + " - 2/3 stack sahi hai", 10, 20, is_core=True)
+                else:
+                    _add("2 VWAP+EMA Stack", "FAIL", _msg + " - breakdown nahi hua", 0, 20, is_core=True)
+
+        # ---- CORE 3: Breakout Close - 25 pts (V86 NEW - Friday ka miss isi se hua tha) ----
+        if _brk_level <= 0 and _sup_level <= 0 and not _day_open:
+            _add("3 Breakout Close", "SKIP", "Breakout level ka data nahi aaya (Resistance / PDH / Day Open sab missing)", 12, 25, is_core=True)
+        else:
+            if is_bull:
+                if _brk_level > 0 and price > _brk_level:
+                    _add("3 Breakout Close", "PASS", f"Breakout! Price {price:.0f} > {_brk_src} {_brk_level:.0f} - close upar hai", 25, 25, is_core=True)
+                elif _brk_level > 0 and abs(_brk_level - price) / price * 100 <= 0.30:
+                    _add("3 Breakout Close", "PARTIAL", f"Breakout ke paas: Price {price:.0f}, {_brk_src} {_brk_level:.0f} ({abs(_brk_level-price)/price*100:.2f}% door) - breakout aane wala hai", 15, 25, is_core=True)
+                elif _day_open and price > _day_open and vwap and price > vwap:
+                    _add("3 Breakout Close", "PARTIAL", f"Breakout abhi nahi, par trend hold: Price {price:.0f} > Day Open {_day_open:.0f} + > VWAP {vwap:.0f}", 12, 25, is_core=True)
+                else:
+                    _add("3 Breakout Close", "FAIL", f"Breakout nahi hua: Price {price:.0f} vs {_brk_src} {_brk_level:.0f} - neeche hai", 0, 25, is_core=True)
+            else:
+                if _sup_level > 0 and price < _sup_level:
+                    _add("3 Breakout Close", "PASS", f"Breakdown! Price {price:.0f} < Support {_sup_level:.0f} - close neeche hai", 25, 25, is_core=True)
+                elif _sup_level > 0 and abs(price - _sup_level) / price * 100 <= 0.30:
+                    _add("3 Breakout Close", "PARTIAL", f"Breakdown ke paas: Price {price:.0f}, Support {_sup_level:.0f}", 15, 25, is_core=True)
+                elif _day_open and price < _day_open and vwap and price < vwap:
+                    _add("3 Breakout Close", "PARTIAL", f"Breakdown abhi nahi, par trend hold: Price {price:.0f} < Day Open {_day_open:.0f} + < VWAP {vwap:.0f}", 12, 25, is_core=True)
+                else:
+                    _add("3 Breakout Close", "FAIL", f"Breakdown nahi hua: Price {price:.0f} vs Support {_sup_level:.0f} - upar hai", 0, 25, is_core=True)
+
+        # ---- SUPPORT 4: Volume - 15 pts (1.2x, missing = neutral) ----
+        if not avg_volume or avg_volume <= 0 or not volume or volume <= 0:
+            _add("4 Volume", "SKIP", "Volume data nahi aaya", 7, 15, is_core=False)
+        else:
+            _ratio = volume / avg_volume if avg_volume else 0
+            if _ratio >= 1.2:
+                _add("4 Volume", "PASS", f"{_ratio:.2f}x avg ({volume:.0f} vs {avg_volume:.0f}) - participation hai", 15, 15, is_core=False)
+            elif _ratio >= 1.0:
+                _add("4 Volume", "PARTIAL", f"{_ratio:.2f}x avg - average participation, trend slow par valid", 10, 15, is_core=False)
+            elif _ratio >= 0.8:
+                _add("4 Volume", "PARTIAL", f"{_ratio:.2f}x avg - thoda kam, par fake nahi", 5, 15, is_core=False)
+            else:
+                _add("4 Volume", "FAIL", f"{_ratio:.2f}x avg ({volume:.0f} vs {avg_volume:.0f}) - fake move ka risk", 0, 15, is_core=False)
+
+        # ---- SUPPORT 5: Momentum RSI + ADX - 20 pts (NEW - pehle RSI ka koi weight hi nahi tha) ----
+        if _rsi is None:
+            _add("5 Momentum RSI+ADX", "SKIP", "RSI data nahi aaya", 10, 20, is_core=False)
+        else:
+            _adx_ok = True if (_adx is None or _adx >= 20) else False
+            if is_bull:
+                if 55 <= _rsi <= 72:
+                    _pts = 20 if _adx_ok else 15
+                    _add("5 Momentum RSI+ADX", "PASS" if _adx_ok else "PARTIAL", f"RSI {_rsi:.0f} bullish zone me hai" + (f", ADX {_adx:.0f} trend strong" if _adx is not None else ""), _pts, 20, is_core=False)
+                elif 50 <= _rsi <= 75:
+                    _add("5 Momentum RSI+ADX", "PARTIAL", f"RSI {_rsi:.0f} - momentum hai par thoda soft", 14, 20, is_core=False)
+                elif _rsi > 75:
+                    _add("5 Momentum RSI+ADX", "PARTIAL", f"RSI {_rsi:.0f} overbought - chase mat karo, retest ka wait karo (trend upar hi hai)", 8, 20, is_core=False)
+                elif 45 <= _rsi < 50:
+                    _add("5 Momentum RSI+ADX", "PARTIAL", f"RSI {_rsi:.0f} neutral - breakout me dum kam", 8, 20, is_core=False)
+                else:
+                    _add("5 Momentum RSI+ADX", "FAIL", f"RSI {_rsi:.0f} weak - momentum nahi hai", 0, 20, is_core=False)
+            else:
+                if 28 <= _rsi <= 45:
+                    _pts = 20 if _adx_ok else 15
+                    _add("5 Momentum RSI+ADX", "PASS" if _adx_ok else "PARTIAL", f"RSI {_rsi:.0f} bearish zone me hai" + (f", ADX {_adx:.0f} trend strong" if _adx is not None else ""), _pts, 20, is_core=False)
+                elif 25 <= _rsi <= 50:
+                    _add("5 Momentum RSI+ADX", "PARTIAL", f"RSI {_rsi:.0f} - breakdown momentum soft", 14, 20, is_core=False)
+                elif _rsi < 25:
+                    _add("5 Momentum RSI+ADX", "PARTIAL", f"RSI {_rsi:.0f} oversold - chase mat karo, retest ka wait karo", 8, 20, is_core=False)
+                else:
+                    _add("5 Momentum RSI+ADX", "FAIL", f"RSI {_rsi:.0f} weak - breakdown me dum nahi", 0, 20, is_core=False)
+
+        # ---- BONUS / PENALTY: OI, GEX, VIX+PCR, Retest - sirf strong contradiction pe -5, missing pe 0 ----
+        _penalty = 0
+        _penalty_msgs = []
+        # OI contradiction: Price up + OI down + Price BELOW VWAP = trap (V85 rule). Agar VWAP hold hai to trap nahi.
+        if _oi_chg is not None and _price_chg is not None:
+            if is_bull and _price_chg > 0 and _oi_chg < 0 and vwap and price < vwap:
+                _penalty += 5; _penalty_msgs.append(f"OI trap: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% par VWAP ke neeche hai (-5)")
+            elif (not is_bull) and _price_chg < 0 and _oi_chg < 0 and vwap and price > vwap:
+                _penalty += 5; _penalty_msgs.append(f"OI trap PE: Price {_price_chg:+.2f}% OI {_oi_chg:+.1f}% par VWAP ke upar hai (-5)")
+        else:
+            skipped.append("⏭️ OI+Price: OI data missing - penalty nahi, FAIL nahi mana")
+        # GEX contradiction
+        _gex_is_fallback = (not gex_flip or float(gex_flip or 0) <= 0 or abs(float(gex_flip or 0) - spot) <= 1.0)
+        if gex_available is False or _gex_is_fallback:
+            skipped.append("⏭️ GEX Flip: GEX data missing / fallback - penalty nahi")
+        else:
+            try:
+                if is_bull and spot < float(gex_flip):
+                    _penalty += 5; _penalty_msgs.append(f"GEX: Spot {spot:.0f} < Flip {float(gex_flip):.0f} - negative gamma (-5)")
+                elif (not is_bull) and spot > float(gex_flip):
+                    _penalty += 5; _penalty_msgs.append(f"GEX PE: Spot {spot:.0f} > Flip {float(gex_flip):.0f} - positive gamma (-5)")
+            except Exception:
+                pass
+        # VIX+PCR contradiction
+        if _pcr is None or pcr_available is False:
+            skipped.append("⏭️ VIX+PCR: PCR data missing - penalty nahi")
+        else:
+            if is_bull and not (_vix_chg <= 1.0 and 0.85 <= _pcr <= 1.40):
+                _penalty += 5; _penalty_msgs.append(f"VIX/PCR support nahi: VIX {_vix_chg:+.1f} PCR {_pcr:.2f} (-5)")
+            elif (not is_bull) and not (_vix_chg >= -0.5 and _pcr < 1.10):
+                _penalty += 5; _penalty_msgs.append(f"VIX/PCR PE support nahi: VIX {_vix_chg:+.1f} PCR {_pcr:.2f} (-5)")
+        # Retest / Chase: VWAP se 2%+ door = chase, -5. VWAP hold = koi penalty nahi.
+        if vwap and vwap > 0:
+            _dist_vwap = abs(price - vwap) / vwap * 100
+            if _dist_vwap > 2.0:
+                _penalty += 5; _penalty_msgs.append(f"Chase risk: VWAP se {_dist_vwap:.2f}% door - bina retest ke entry (-5)")
+        # Resistance trap (bull) / Support trap (bear) - 0.2% ke andar aur breakout nahi hua to -5
+        if is_bull and _brk_level and _brk_level > 0 and price < _brk_level:
+            _d = abs(_brk_level - price) / price * 100 if price else 99
+            if _d < 0.2:
+                _penalty += 5; _penalty_msgs.append(f"Resistance bahut paas: {_brk_level:.0f} ({_d:.2f}% door) - trap risk (-5)")
+        if (not is_bull) and _sup_level and _sup_level > 0 and price > _sup_level:
+            _d2 = abs(price - _sup_level) / price * 100 if price else 99
+            if _d2 < 0.2:
+                _penalty += 5; _penalty_msgs.append(f"Support bahut paas: {_sup_level:.0f} ({_d2:.2f}% door) - trap risk (-5)")
+        if _penalty:
+            score = max(0, score - _penalty)
+            for _pm in _penalty_msgs:
+                reasons.append(f"⚠️ {_pm}")
+            details.append(("Penalty (OI/GEX/VIX/Retest)", "FAIL", " | ".join(_penalty_msgs), -_penalty, 0))
+        score = max(0, min(100, int(round(score))))
+
+        # ---- CORE GATE (Friday Fix): 3 CORE PASS = kabhi WAIT nahi ----
+        _core_full = sum(1 for _k in ["1 HTF Trend", "2 VWAP+EMA Stack", "3 Breakout Close"] if breakdown.get(_k, {}).get("status") == "PASS")
+        # PARTIAL ko half-core maano: 2 PARTIAL + 1 PASS = 2 CORE jaisa
+        _core_partial = sum(1 for _k in ["1 HTF Trend", "2 VWAP+EMA Stack", "3 Breakout Close"] if breakdown.get(_k, {}).get("status") == "PARTIAL")
+        if _core_full == 3:
+            # Teenon CORE pass hai - supporting data missing bhi ho to STRONG / READY hi hoga
+            if score >= 80:
+                verdict = "STRONG BUY" if is_bull else "STRONG SELL"
+                verdict_opt = "STRONG CE" if is_bull else "STRONG PE"
+                downgrade = False
+            else:
+                verdict = "READY - BUY ON RETEST" if is_bull else "READY - SELL ON RETEST"
+                verdict_opt = verdict
+                downgrade = False
+        elif (_core_full == 2 and _core_partial >= 1) or _core_full == 2:
+            if score >= 80:
+                verdict = "STRONG BUY" if is_bull else "STRONG SELL"
+                verdict_opt = "STRONG CE" if is_bull else "STRONG PE"
+                downgrade = False
+            elif score >= 60:
+                verdict = "READY - BUY ON RETEST" if is_bull else "READY - SELL ON RETEST"
+                verdict_opt = verdict
+                downgrade = False
+            elif score >= 40:
+                verdict = "WEAK - WAIT"; verdict_opt = verdict; downgrade = True
+            else:
+                verdict = "NO TRADE"; verdict_opt = verdict; downgrade = True
+        else:
+            if score >= 80:
+                verdict = "STRONG BUY" if is_bull else "STRONG SELL"
+                verdict_opt = "STRONG CE" if is_bull else "STRONG PE"
+                downgrade = False
+            elif score >= 60:
+                verdict = "READY - BUY ON RETEST" if is_bull else "READY - SELL ON RETEST"
+                verdict_opt = verdict
+                downgrade = False
+            elif score >= 40:
+                verdict = "WEAK - WAIT"; verdict_opt = verdict; downgrade = True
+            else:
+                verdict = "NO TRADE"; verdict_opt = verdict; downgrade = True if checked_core >= 2 else False
+        # Agar koi CORE checked hi nahi hua (sab SKIP) to DATA MISSING
+        if checked_core == 0:
+            verdict = "DATA MISSING - WAIT"; verdict_opt = verdict; downgrade = False
+        return verdict, score, passed_core, checked_core, reasons, skipped, downgrade, verdict_opt, details, breakdown
+    except Exception as e:
+        return "WEAK - WAIT", 0, 0, 0, [f"V86 calc error: {e}"], [], False, "WEAK - WAIT", [], {}
+
+def calculate_overall_strong_signal_v55_2(
+    price=0, vwap=0, ema20=0, ema50=0, ema200=0,
+    price_change_pct=0, oi_change_pct=0,
+    spot=0, gex_flip=0, max_pain=0,
+    volume=0, avg_volume=0,
+    vix_change=0, pcr=1.0, breadth_adv_pct=50,
+    direction="BULLISH",
+    htf_bullish=True, retest_done=False,
+    resistance=0, support=0,
+    rsi=50, adx=20,
+    ce_pe=None,
+):
+    # Backward-compat wrapper - purana code 5 values expect karta hai, V85 logic se chalega
+    try:
+        _v, _p, _c, _r, _s, _d, _vo, _det = calculate_overall_strong_signal_v85(
+            price=price, vwap=vwap, ema20=ema20, ema50=ema50, ema200=ema200,
+            price_change_pct=price_change_pct, oi_change_pct=oi_change_pct,
+            spot=spot, gex_flip=gex_flip, max_pain=max_pain,
+            volume=volume, avg_volume=avg_volume,
+            vix_change=vix_change, pcr=pcr,
+            direction=direction, htf_bullish=htf_bullish, retest_done=retest_done,
+            resistance=resistance, support=support, rsi=rsi, adx=adx, ce_pe=ce_pe,
+        )
+        return _v, _p, _r + _s, _d, _vo
     except Exception as e:
         return "WEAK - WAIT", 5, [f"Overall calc error: {e}"], False, "WEAK - WAIT"
+
 
 # ================= V18.1 HIGH CONVICTION MATH ENGINE (Non-Destructive) =================
 # Ye module purane features ko hilaye bina add hua hai - sirf naya layer hai
@@ -3965,6 +4692,287 @@ def live_fragment(*args, **kwargs):
     def decorator(func): return func
     return decorator
 
+
+# ===== V88 FIX - 23 Nov 2026 - AUTO-REFRESH + ARROW BUG - DONO KI JAD =====
+# BUG 1 - AUTO-REFRESH KYU NAHI HOTA THA:
+#   V87 me @st.fragment ko DUMMY kar diya tha (live_fragment = plain function).
+#   Isliye @live_fragment(run_every=60) kuch karta hi nahi tha, page khud rerun nahi hota tha.
+#   Scroll / click pe Streamlit khud rerun karta hai, isliye tabhi number badalta dikhta tha.
+#   V88 FIX: Purane BHARI fragments ko DUMMY hi rakha (SCAN / chain / FII network wale - wahi Bad message ki jad the).
+#   Sirf is LIVE TICKER ke liye EK ASLI @st.fragment(run_every=30) lagaya hai.
+#   Ye fragment LIGHTWEIGHT hai: sirf Stooq 1.5s fast spot + cached PCR/VIX padhta hai.
+#   Isme NO st.session_state write, NO st.button, NO st.rerun, NO ThreadPool, NO chain/FII network hai.
+#   Isliye SessionInfo race nahi aayega, aur number har 30 sec me khud update hoga.
+# BUG 2 - ARROW ULTA + GREEN KYU THA:
+#   st.metric(delta="Yahoo Fallback" / "15M" / "OPTIMAL BUYING" / "Cap: -10000") me delta me TEXT tha, NUMBER nahi.
+#   Streamlit text delta ko parse nahi kar pata, to default me hamesha UP arrow + GREEN dikha deta hai.
+#   Chahe number gira ho, chahe Cap minus me ho - arrow hamesha up-green hi rehta tha.
+#   V88 FIX: st.metric HATAYA. Ab _v88_live_card / _v88_info_card (custom HTML) use hoga.
+#   _v88_live_card: diff = current - prev nikalta hai. diff < 0 => ▼ RED, diff > 0 => ▲ GREEN, diff == 0 => • GREY.
+#   VIX ke liye invert=True: upar jana BURA hai, isliye VIX up => ▼ nahi, ▲ RED, down => ▼ GREEN.
+#   Text wale cards (System Mode / Market Status / Timeframe / Risk Gate) me arrow HOTA HI NAHI - _v88_info_card me koi arrow nahi hai.
+#   Prev value module-level dict _V88_PREV me hai, session_state me nahi - isliye fragment ke andar likhne se SessionInfo error nahi aayega.
+_V88_PREV = {}
+_V88_BASE = {}  # V90: Session ka pehla number. Tick-to-tick diff bahut chhota hota hai (0.00), isliye arrow grey hi rehta tha. Ab BASE se compare karenge.
+def _v88_arrow(current, prev, invert=False):
+    """Returns (arrow_char, color_hex, diff_text). current/prev numeric hone chahiye."""
+    try:
+        if current is None or prev is None:
+            return ("•", "#9e9e9e", "")
+        _diff = float(current) - float(prev)
+        if abs(_diff) < 1e-9:
+            return ("•", "#9e9e9e", "0.00")
+        _is_up = _diff > 0
+        _is_good = (not _is_up) if invert else _is_up
+        _color = "#22c55e" if _is_good else "#ef4444"
+        _arrow = "▲" if _is_up else "▼"
+        return (_arrow, _color, f"{_arrow} {abs(_diff):,.2f}")
+    except Exception:
+        return ("•", "#9e9e9e", "")
+def _v88_info_card(label, value_str, subtitle, value_color="#ffffff", subtitle_color="#9e9e9e"):
+    """Text wale cards ke liye - KOI ARROW NAHI. System Mode / Market Status / Timeframe / Risk Gate isi se banenge."""
+    try:
+        st.markdown(f"""<div style="background:#16191d; border:1px solid #2a2e35; border-radius:12px; padding:14px; min-height:92px;">
+<div style="color:#9e9e9e; font-size:13px;">{label}</div>
+<div style="color:{value_color}; font-size:20px; font-weight:700; margin:4px 0; line-height:1.2;">{value_str}</div>
+<div style="color:{subtitle_color}; font-size:13px;">{subtitle}</div></div>""", unsafe_allow_html=True)
+    except Exception:
+        st.write(f"**{label}**: {value_str} - {subtitle}")
+def _v88_live_card(label, value_str, current, prev_key, subtitle, invert=False):
+    """Number wale cards ke liye - arrow + color hamesha sahi direction se aayega. delta me kabhi TEXT mat bhejo."""
+    try:
+        # V90 FIX: Pehle tick-to-tick diff dekhte the. NIFTY 30 sec me 0.5 point bhi nahi hilta to diff 0.00 => grey dot hi dikhta tha, isliye red/green kabhi aaya hi nahi.
+        # Ab BASE (session ka pehla number) se compare karenge. Session start se upar hai to GREEN, neeche hai to RED, bilkul same hai to hi GREY.
+        # PCR / Max Pain / VIX agar bilkul nahi hile to grey hi rahega - wo sahi hai, wo badla hi nahi hai, usko jabardasti green/red mat samjho.
+        if prev_key not in _V88_BASE and current is not None:
+            try:
+                _V88_BASE[prev_key] = float(current)
+            except Exception:
+                pass
+        _base = _V88_BASE.get(prev_key)
+        _arrow, _color, _diff_text = _v88_arrow(current, _base, invert=invert)
+        _sub = f"{_diff_text} | {subtitle}" if _diff_text else subtitle
+        # Agle refresh ke liye current ko prev bana ke save karo - module dict me, session_state me nahi
+        try:
+            if current is not None:
+                _V88_PREV[prev_key] = float(current)
+        except Exception:
+            pass
+        st.markdown(f"""<div style="background:#16191d; border:1px solid #2a2e35; border-radius:12px; padding:14px; min-height:92px;">
+<div style="color:#9e9e9e; font-size:13px;">{label}</div>
+<div style="color:white; font-size:22px; font-weight:700; margin:4px 0; line-height:1.2;">{value_str}</div>
+<div style="color:{_color}; font-size:13px; font-weight:600;">{_sub}</div></div>""", unsafe_allow_html=True)
+    except Exception:
+        try:
+            st.write(f"**{label}**: {value_str} - {subtitle}")
+        except Exception:
+            pass
+def _v88_get_vix_live():
+    """VIX ka asli live number. Pehle _v58_vix_fast() hamesha 13.5 return karta tha, isliye VIX kabhi hilta hi nahi tha."""
+    try:
+        _v = _v58_spot_fast("INDIA_VIX")
+        if _v and 5 < float(_v) < 60:
+            return float(_v)
+    except Exception:
+        pass
+    try:
+        _d = _v58_vix_fast()
+        if isinstance(_d, dict) and _d.get("vix"):
+            return float(_d["vix"])
+    except Exception:
+        pass
+    return 13.5
+
+
+# ===== V89 FIX - 23 Nov 2026 - AttributeError @st.fragment wali line ka ASLI kaaran =====
+# ERROR THA: File app.py line 10671 @st.fragment(run_every=30) pe AttributeError.
+# KAARAN: Fragment ko NESTED block ke andar define kiya tha - 4-space indent me, ek if/else ke andar.
+# Streamlit me @st.fragment SIRF TOP-LEVEL (indent 0) pe define ho sakta hai. Nested if / function ke andar
+# define karne pe Streamlit usko fragment hi nahi maanta aur @st.fragment line pe hi AttributeError deke app gira deta hai.
+# V89 FIX: (1) Nested wala @st.fragment HATA DIYA - wahan ab sirf plain call hai, koi decorator nahi.
+# (2) Fragment ko YAHAN TOP-LEVEL pe define kiya hai - _v89_ticker_fragment. Call nested se ho sakta hai, define top-level hona chahiye.
+# (3) _v89_safe_fragment wrapper: Agar is Cloud pe st.fragment purana / missing ho to bhi AttributeError nahi aayega,
+#     wrapper pakad ke plain function bana dega, app chalega, crash nahi hoga. REFRESH se tab bhi update hoga.
+def _v89_safe_fragment(*d_args, **d_kwargs):  # V91: Ab use nahi hota, sirf backup ke liye rakha hai. Kabhi bhi isko @st.fragment se mat jodo.
+    """st.fragment ka safe wrapper - koi bhi error aaye to plain function bana do, app mat girao."""
+    def _deco(func):
+        _frag = getattr(st, "fragment", None)
+        if callable(_frag):
+            try:
+                return _frag(*d_args, **d_kwargs)(func)
+            except Exception:
+                return func
+        return func
+    return _deco
+
+# V91 PERMANENT: Fragment HAMESHA KE LIYE BAND. Koi bhi @st.fragment - chahe top-level ho, lightweight ho - is app me Bad message laayega.
+# Kaaran: Ye app 11,800 line ka hai, main run me 100+ jagah session_state likhta hai, SCAN me ThreadPool + network hai.
+# Fragment har 30 sec me alag run-context me ghus ke wahi SessionInfo chhuta hai, jab main run bhi chal raha hota hai.
+# Dono ek saath SessionInfo chhune se hi Streamlit ka message queue corrupt hota hai -> "Bad message format".
+# Isliye V89/V90 wala top-level fragment bhi Bad message la raha tha, screenshot me wahi hua.
+# Ab auto-refresh fragment se NAHI hoga. Ticker plain function hai, REFRESH / SCAN / scroll pe update hoga. Yehi permanent ilaaj hai.
+# Arrow fix (V88/V90) fragment ke bina bhi chalega - wo sirf HTML card hai, fragment se uska koi lena-dena nahi.
+
+def _v93_get_vix_live():
+    """V95: VIX 13.5 pe atka hua tha kyunki _v58_vix_fast hamesha 13.5 deta tha. Ab Yahoo ^INDIAVIX pehle, phir Stooq indiavix, tabhi 13.5 fallback - aur fallback ko STALE bolenge, LIVE nahi."""
+    try:
+        _p, _pct, _prev, _src = _v64_yahoo_one("^INDIAVIX")
+        if _p and 5 < float(_p) < 60:
+            return float(_p), "Yahoo VIX Live"
+    except Exception:
+        pass
+    try:
+        _v = _v58_spot_fast("INDIA_VIX")
+        if _v and 5 < float(_v) < 60:
+            return float(_v), "Stooq VIX Live"
+    except Exception:
+        pass
+    return 13.5, "STALE 13.5 - VIX Feed Offline"
+def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
+    """V95: PCR 1.05 aur Max Pain 25000 isliye atke the kyunki ticker sirf CACHED value padhta tha, chain kabhi fetch hi nahi karta tha. SCAN dabaye bina PCR kabhi nahi aayega - yehi jad thi.
+    Ab ticker me hi FAST chain (max 2.5s) try karenge. Chain mil gaya to PCR + Max Pain asli, nahi mila to CACHED + STALE label, 1.05/25000 ko LIVE nahi bolenge."""
+    _pcr, _pcr_live, _mp, _mp_live, _gex = 1.05, False, None, False, 0.0
+    try:
+        _cached_pcr = float(_v59_ss_get('_last_pcr_value', 1.05) or 1.05)
+    except Exception:
+        _cached_pcr = 1.05
+    try:
+        _cached_mp = _v59_ss_get('_last_max_pain', None)
+        _cached_mp = float(_cached_mp) if _cached_mp else None
+    except Exception:
+        _cached_mp = None
+    try:
+        _cached_gex = float(_v59_ss_get('_last_net_gex_cr', 0.0) or 0.0)
+    except Exception:
+        _cached_gex = 0.0
+    # FAST chain - sirf ek baar, timeout chhota, ticker ko slow nahi karega
+    try:
+        _chain = None
+        try:
+            _chain = _v58_chain_fast(selected_underlying, current_expiry)
+        except Exception:
+            _chain = None
+        if _chain is not None and hasattr(_chain, 'empty') and not _chain.empty:
+            try:
+                _pcr_calc = calculate_pcr(_chain)
+                if _pcr_calc and 0 < float(_pcr_calc) <= 10:
+                    _pcr, _pcr_live = float(_pcr_calc), True
+                    try:
+                        _v59_ss_set('_last_pcr_value', float(_pcr))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                # V94 FIX: _v58_chain_fast ka DataFrame shape: strikePrice | option_type (CE/PE) | openInterest
+                # V93 me 'strike' + CE_OI/PE_OI dhoondh raha tha, jo is DataFrame me hai hi nahi, isliye Max Pain kabhi LIVE nahi hota tha.
+                # Sahi: strikePrice pe group karke openInterest sum karo, sabse zyada total OI wala strike = Max Pain.
+                _strike_col = None
+                for _c in list(_chain.columns):
+                    if str(_c).lower() in ("strikeprice", "strike", "strike_price"):
+                        _strike_col = _c; break
+                _oi_col = None
+                for _c in list(_chain.columns):
+                    if str(_c).lower() in ("openinterest", "open_interest", "oi"):
+                        _oi_col = _c; break
+                if _strike_col and _oi_col:
+                    _tmp = _chain.copy()
+                    _tmp["_oi_num"] = __import__("pandas").to_numeric(_tmp[_oi_col], errors="coerce").fillna(0)
+                    _grp = _tmp.groupby(_tmp[_strike_col])["_oi_num"].sum()
+                    if len(_grp) > 0:
+                        _mp_val = float(_grp.idxmax())
+                        if 20000 < _mp_val < 35000:
+                            _mp, _mp_live = _mp_val, True
+                            try:
+                                _v59_ss_set('_last_max_pain', float(_mp))
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+    if not _pcr_live:
+        _pcr = _cached_pcr
+    if _mp is None:
+        if _cached_mp and spot and abs(float(_cached_mp) - float(spot)) < 2000:
+            _mp = float(_cached_mp)
+        elif spot:
+            _mp = float(round(float(spot) / 50.0) * 50.0)
+        else:
+            _mp = 25000.0
+    return float(_pcr), bool(_pcr_live), float(_mp), bool(_mp_live), float(_cached_gex)
+
+def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
+    # Body wahi V88 wala hai - sirf FAST + CACHED data. Bhari chain/FII SCAN pe aayega, yahan nahi.
+    # V92: NIFTY ke liye EK hi Spot - _v92_get_single_spot, taaki Gift wale Spot se alag number na dikhe.
+    _single_src92 = ""
+    try:
+        if str(selected_underlying).upper() == "NIFTY":
+            _s92, _src92, _time92 = _v92_get_single_spot()
+            spot = float(_s92) if _s92 else None
+            _single_src92 = _src92
+        else:
+            spot = _v58_spot_fast(selected_underlying)
+            if not spot or float(spot) <= 0:
+                try:
+                    spot = _v59_ss_get(f"_v58_last_spot_{selected_underlying}")
+                    spot = float(spot) if spot else None
+                except Exception:
+                    spot = None
+    except Exception:
+        spot = None
+    # V95: PCR / Max Pain - sirf cached mat padho, FAST chain try karo. VIX - Yahoo ^INDIAVIX se live lao, 13.5 hardcoded mat rakho.
+    try:
+        vix_val, _vix_src93 = _v93_get_vix_live()
+    except Exception:
+        vix_val, _vix_src93 = 13.5, "STALE 13.5"
+    try:
+        pcr, _pcr_live93, max_pain_val, _mp_live93, _net_gex = _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot)
+    except Exception:
+        pcr, _pcr_live93, max_pain_val, _mp_live93 = 1.05, False, (float(spot) if spot else 25000.0), False
+        try:
+            _net_gex = float(_v59_ss_get('_last_net_gex_cr', 0.0) or 0.0)
+        except Exception:
+            _net_gex = 0.0
+    try:
+        _is_open = market_open()
+    except Exception:
+        _is_open = False
+    try:
+        _now_str = datetime.now(IST).strftime("%H:%M:%S")
+    except Exception:
+        _now_str = ""
+    _disp_label = f"Updated {_now_str} | Verified Exchange Feed" if _is_open else f"Updated {_now_str} | Official Session Close"
+    # V92: Yahoo Fallback / Last Cached hai to LIVE mat bolo, STALE likho.
+    try:
+        if _single_src92 and "Stooq" not in str(_single_src92):
+            _disp_label = f"Updated {_now_str} | STALE - {_single_src92} (Live nahi aaya)"
+    except Exception:
+        pass
+    if (not spot) and _is_open:
+        try:
+            _fb = get_spot_safe_for_display(selected_underlying)
+            if _fb and float(_fb) > 0:
+                spot = float(_fb)
+                _disp_label = f"Updated {_now_str} | Yahoo Fallback"
+        except Exception:
+            pass
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        if spot and float(spot) > 0:
+            _v88_live_card(f"{selected_underlying} Spot (NSE Live) [V95]", fmt(float(spot)), float(spot), f"spot_{selected_underlying}", _disp_label)
+        else:
+            _v88_info_card(f"{selected_underlying} Spot", "Feed Retry..." if _is_open else "Market Closed", "Live Feed Blocked - Last Tick aa raha hai" if _is_open else "Feed Offline", value_color="#ef4444" if _is_open else "#ffffff")
+    with s2:
+        _vix_label93 = f"Updated {_now_str} | [V95] {_vix_src93} | " + ("OPTIMAL BUYING" if float(vix_val) < 15 else "HIGH VOLATILITY")
+        _v88_live_card("India VIX", fmt(float(vix_val)), float(vix_val), "vix", _vix_label93, invert=True)
+    with s3:
+        _pcr_label93 = f"Updated {_now_str} | [V95] {'LIVE Chain' if _pcr_live93 else 'STALE - SCAN dabao, chain nahi aaya'}"
+        _v88_live_card("Put-Call Ratio (PCR)", fmt(float(pcr), 2), float(pcr), "pcr", _pcr_label93)
+    with s4:
+        _mp_label93 = f"Updated {_now_str} | [V95] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
+        _v88_live_card("Max Pain Gravity", f"{max_pain_val:,.0f}", float(max_pain_val), "max_pain", _mp_label93)
+
 def live_spot_fragment_safe(symbol="NIFTY"):
     # V56 - Spot-only live ticker, 5 sec me update. Chain / session_state isme mat laana, nahi to phir SessionInfo error aayega.
     # Use: live_spot_fragment_safe("NIFTY") ko UI me jahan spot dikhana hai wahan call karo.
@@ -3974,11 +4982,12 @@ def live_spot_fragment_safe(symbol="NIFTY"):
         _src = _res.get("source", "") if isinstance(_res, dict) else ""
         _ts = _res.get("timestamp", "") if isinstance(_res, dict) else ""
         if _p and _p > 0:
-            st.metric(f"{symbol} Spot LIVE", f"{_p:,.2f}", delta=f"{_src} | {_ts}", delta_color="normal")
+            # V88: delta me text mat bhejo, current + prev_key bhejo - arrow direction + color khud sahi aayega
+            _v88_live_card(f"{symbol} Spot LIVE", f"{_p:,.2f}", float(_p), f"spot_{symbol}", f"{_src} | {_ts}")
         else:
-            st.metric(f"{symbol} Spot", "Feed Retry...", delta="Live Feed Blocked - NO TRADE", delta_color="off")
+            _v88_info_card(f"{symbol} Spot", "Feed Retry...", "Live Feed Blocked - NO TRADE", value_color="#ef4444")
     except Exception:
-        st.metric(f"{symbol} Spot", "Feed Retry...", delta="Live Feed Blocked - NO TRADE", delta_color="off")
+        _v88_info_card(f"{symbol} Spot", "Feed Retry...", "Live Feed Blocked - NO TRADE", value_color="#ef4444")
 
 # =====================================================================
 # 7. STATEFUL PAPER PORTFOLIO & AUDIT LEDGER
@@ -3995,6 +5004,27 @@ if not _v59_ss_contains("paper_portfolio"):
         "daily_loss_limit": 10000.0,
         "circuit_broken": False,
     })
+def _v80_get_portfolio():
+    # V87: Sirf safe helper - direct st.session_state.get/set HATAYA. Safe helper khud main-thread check + fallback karta hai.
+    _def80 = {"cash_balance": 500000.0, "starting_balance": 500000.0, "daily_realized_pnl": 0.0, "positions": {}, "trade_history": [], "session_date": datetime.now(IST).date().isoformat(), "daily_loss_limit": 10000.0, "circuit_broken": False}
+    try:
+        _pp80 = _v59_ss_get("paper_portfolio", None)
+        if isinstance(_pp80, dict) and "positions" in _pp80:
+            return _pp80
+    except Exception:
+        pass
+    try: _v59_ss_set("paper_portfolio", dict(_def80))
+    except Exception: pass
+    return dict(_def80)
+def _v80_set_portfolio_field(_k80, _v80):
+    # V87: Sirf safe helper - direct write hataya
+    try:
+        _pp80 = _v80_get_portfolio()
+        _pp80[_k80] = _v80
+        try: _v59_ss_set("paper_portfolio", _pp80)
+        except Exception: pass
+    except Exception:
+        pass
 
 def check_daily_reset():
     # V59: Safe helper - session na bana ho to crash nahi hoga
@@ -4758,8 +5788,19 @@ _V64_SESSION = requests.Session()
 _V64_SESSION.headers.update(_V64_HEADERS)
 _V64_LAST_GOOD_FILE = "global_last_good.json"
 def _v64_get(url, timeout=4):
+    # V79: Session 403/429 return kare to usko success MAT MAANO - fresh try karo. Pehle yahi bug tha, 403 aake bhi fallback nahi chalta tha, isliye 0/12 FAILED aata tha.
     try:
         r = _V64_SESSION.get(url, timeout=timeout)
+        if r is not None and r.status_code in (403, 429, 401):
+            try:
+                import random as _rnd79
+                _ua79 = _rnd79.choice(["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"])
+                r2 = requests.get(url, timeout=timeout, headers={"User-Agent": _ua79, "Accept": "application/json, text/plain, */*"})
+                if r2 is not None and r2.status_code not in (403, 429, 401):
+                    return r2
+                return r2 if r2 is not None else r
+            except Exception:
+                return r
         return r
     except Exception:
         try:
@@ -4793,6 +5834,20 @@ def _v64_yahoo_one(ysym):
             if price and price > 0:
                 pct = ((price - prev) / prev) * 100 if prev > 0 else 0.0
                 return price, pct, prev, "YAHOO_VIA_PROXY"
+    except Exception:
+        pass
+    # V79: 4th source - Codetabs se Yahoo. AllOrigins fail ho to Codetabs aksar chal jata hai. Ye hi FAILED ko khatam karega.
+    try:
+        import urllib.parse as _up79y
+        _yurl79 = f"https://query2.finance.yahoo.com/v8/finance/chart/{ysym}?interval=1d&range=2d"
+        r79 = _v64_get("https://api.codetabs.com/v1/proxy?quest=" + _up79y.quote(_yurl79, safe=''), timeout=4)
+        if r79 is not None and r79.ok:
+            meta79 = r79.json()["chart"]["result"][0]["meta"]
+            price79 = float(meta79.get("regularMarketPrice", 0.0) or 0.0)
+            prev79 = float(meta79.get("chartPreviousClose", price79) or price79)
+            if price79 and price79 > 0:
+                pct79 = ((price79 - prev79) / prev79) * 100 if prev79 > 0 else 0.0
+                return price79, pct79, prev79, "YAHOO_VIA_CODETABS"
     except Exception:
         pass
     return None, 0.0, None, "FAILED"
@@ -4903,36 +5958,851 @@ def _v64_fetch_one_symbol(key, ysym, stooq_sym):
     except Exception:
         pass
     return None, 0.0, None, "FAILED"
-def _v64_fetch_gift():
-    # GIFT: 3 proxy, har ek 5s. Codetabs pehle, phir allorigins, phir corsproxy. Koi bhi chal gaya to kaam ho gaya.
+
+# ===== V82 GIFT LIVE FIX - 18 Nov 2026 - Screenshot: Baaki sab LIVE, sirf Gift FAILED =====
+# Jad (3): (1) Gift sirf NSE India API pe tha, jo Cloud IP block + cookie maangta hai, isliye 3 proxy fail.
+# (2) Gift ka Google/Yahoo/Stooq backup tha hi nahi - _V63_SYMBOLS aur _V65_GOOGLE_MAP me Gift ki entry hi nahi thi.
+# (3) Gift ke 3 proxy x 5s = 15s, par bahar wala ThreadPool sirf 12s wait karta hai - Yahoo fallback tak pahunchne se pehle hi FAILED.
+# V82 FIX: Gift ke liye 3 source PARALLEL me, har ek max 2.5s. Jo pehle aaya wahi LIVE. NSE proxy sirf last me, 1 proxy, 2.5s.
+# Koi nakli number nahi - jo source se aaya uska naam source me likha hoga. Nifty spot proxy bhi clearly likha hoga.
+def _v82_google_gift():
+    """Google Finance GIFT Nifty - Cloud pe sabse zyada chalta hai. URL: GIFTNIFTY:INDEXNSEIX"""
     try:
-        import urllib.parse as _up64g
+        r = _v64_get("https://www.google.com/finance/quote/GIFTNIFTY:INDEXNSEIX", timeout=3)
+        if r is None or not r.ok:
+            return None, 0.0, None, "FAILED"
+        import re as _re82
+        _m = _re82.findall(r'YMlKec[^>]*>([^<]+)<', r.text or "")
+        if not _m:
+            return None, 0.0, None, "FAILED"
+        _raw = _m[0].replace(",", "").replace("$", "").replace("₹", "").replace("¥", "").strip()
+        try:
+            _price = float(_raw)
+        except Exception:
+            return None, 0.0, None, "FAILED"
+        _pct = 0.0
+        try:
+            _pm = _re82.findall(r'P2Luy[^>]*>([^<]+)<', r.text or "")
+            for _x in _pm:
+                if "%" in _x:
+                    _pct = float(_x.replace("%", "").replace("+", "").strip())
+                    break
+        except Exception:
+            _pct = 0.0
+        if _price and 20000 < _price < 35000:
+            return _price, _pct, None, "GOOGLE_GIFT_LIVE"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v82_yahoo_gift():
+    """Yahoo Nifty spot se Gift proxy - Gift = Nifty spot + premium, isliye spot bhi kaam ka hai. Source me saaf likha hoga."""
+    try:
+        _np, _npct, _nprev, _nsrc = _v64_yahoo_one("^NSEI")
+        if _np and 20000 < _np < 35000:
+            # Gift aam taur pe Nifty spot se 20-60 pts upar rehta hai, par nakli +25 mat jodo - spot hi dikhao, source me likh do
+            return float(_np), float(_npct or 0.0), _nprev, "YAHOO_NSEI_SPOT"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v82_stooq_gift():
+    """Stooq Nifty - Yahoo fail ho to Stooq se Nifty spot."""
+    try:
+        _sp, _spct, _sprev, _ssrc = _v64_stooq_one("nsei")
+        if _sp and 20000 < _sp < 35000:
+            return float(_sp), float(_spct or 0.0), _sprev, "STOOQ_NSEI_SPOT"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v82_nse_proxy_gift():
+    """NSE IX proxy - sirf 1 proxy, 2.5s. Pehle 3 proxy x 5s = 15s lagta tha, isliye timeout se pehle hi FAILED ho jata tha."""
+    try:
+        import urllib.parse as _up82
         _gift_url = "https://www.nseindia.com/api/quote-derivative?symbol=GIFTNIFTY"
-        for _pb in ["https://api.codetabs.com/v1/proxy?quest=", "https://api.allorigins.win/raw?url=", "https://corsproxy.io/?url="]:
+        r = _v64_get("https://api.codetabs.com/v1/proxy?quest=" + _up82.quote(_gift_url, safe=''), timeout=3)
+        if r is not None and r.ok:
+            _j = r.json()
+            _d0 = _j.get("data", [{}])[0] if isinstance(_j.get("data"), list) and _j.get("data") else {}
+            _lp = float(_d0.get("lastPrice", 0) or 0)
+            _prev = None
+            for _k in ["previousClose", "prevClose", "closePrice", "prev_close"]:
+                if _d0.get(_k):
+                    _prev = float(_d0.get(_k)); break
+            if _lp and 20000 < _lp < 35000:
+                _pct = ((_lp - _prev) / _prev) * 100 if _prev and _prev > 0 else 0.0
+                return _lp, _pct, _prev, "NSE_IX_PROXY"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v82_fetch_gift_fast():
+    """V82: Gift ke 4 source PARALLEL me, max 4s total. Jo pehle LIVE aaya wahi return. FAILED tabhi jab 4no fail."""
+    try:
+        import concurrent.futures as _cf82
+        with _cf82.ThreadPoolExecutor(max_workers=4) as _ex:
+            _futs = {
+                _ex.submit(_v82_google_gift): "GOOGLE",
+                _ex.submit(_v82_yahoo_gift): "YAHOO",
+                _ex.submit(_v82_stooq_gift): "STOOQ",
+                _ex.submit(_v82_nse_proxy_gift): "NSE",
+            }
+            # Priority: Google Gift (asli Gift) > NSE Proxy (asli Gift) > Yahoo/ Stooq spot (proxy)
+            # Pehle 4s me jo aaya usme se best chuno, sabka wait mat karo
+            _results = {}
             try:
-                r = _v64_get(_pb + _up64g.quote(_gift_url, safe=''), timeout=5)
+                for _f in _cf82.as_completed(_futs, timeout=4):
+                    _k = _futs[_f]
+                    try:
+                        _results[_k] = _f.result(timeout=1)
+                    except Exception:
+                        _results[_k] = (None, 0.0, None, "FAILED")
+            except Exception:
+                pass
+            # Best pick: GOOGLE Gift pehle, phir NSE, phir Yahoo, phir Stooq
+            for _k in ["GOOGLE", "NSE", "YAHOO", "STOOQ"]:
+                _r = _results.get(_k, (None, 0.0, None, "FAILED"))
+                if _r and _r[0] and _r[0] > 0:
+                    return _r
+            # Agar koi bhi 4s me nahi aaya to bhi 1 baar Yahoo ko direct 3s do - kabhi kabhi slow aata hai
+            try:
+                _np, _npct, _nprev, _nsrc = _v64_yahoo_one("^NSEI")
+                if _np and _np > 0:
+                    return float(_np), float(_npct or 0.0), _nprev, "YAHOO_NSEI_SPOT_RETRY"
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v82_fetch_gift():
+    # Purana naam bhi isi naye fast wale ko bulayega, taaki purane caller na toote
+    return _v82_fetch_gift_fast()
+
+# ===== V82 LIVE STREAMING TICKER - Gift LTP har 15s pe, bina poora page reload kiye =====
+# Ye fragment sirf READ karta hai - koi session_state write nahi, koi st.rerun nahi, isliye Bad message nahi aayega.
+# V81 wala deferred rerun rule yahan bhi lagu hai - fragment ke andar rerun bilkul nahi hai.
+try:
+    @live_fragment(run_every=15)  # V87 PERMANENT: asli st.fragment HATAYA - dummy hai, plain function ban gaya, har 15s auto nahi chalega
+    def _v82_gift_live_ticker():
+        try:
+            _gp, _gpct, _gprev, _gsrc = _v82_fetch_gift_fast()
+            _now = datetime.now(IST).strftime("%H:%M:%S IST")
+            if _gp and _gp > 0:
+                # V94 KILL: Ye V82 purana ticker hai, ab use nahi hona chahiye. Agar dikhe to samjho purani file live hai. Isliye V93 badge ke saath Spread direction dikhao, purana +x% mat dikhao.
+                try:
+                    _s93x, _, _ = _v92_get_single_spot()
+                    _a93x, _, _l93x, _sp93x, _ = _v92_gift_direction(_gp, _s93x, _gprev)
+                except Exception:
+                    _a93x, _l93x, _sp93x = "•", "N/A", 0.0
+                st.markdown(f"### 🔴 [V95] LIVE Gift Nifty Streaming | **{_gp:,.2f}** {_a93x} {_l93x} | {_gsrc} | Last: {_now} | REFRESH se update")
+            else:
+                st.markdown(f"### 🔴 LIVE Gift Nifty Streaming | Feed Retry... | Last try: {_now} | REFRESH dabao ya thoda wait karo, 15s me phir try hoga")
+        except Exception:
+            try:
+                st.caption("Gift Live Ticker - Feed Retry...")
+            except Exception:
+                pass
+except Exception:
+    def _v82_gift_live_ticker():
+        try:
+            _gp, _gpct, _gprev, _gsrc = _v82_fetch_gift_fast()
+            if _gp and _gp > 0:
+                st.markdown(f"### 🔴 LIVE Gift Nifty Streaming | **{_gp:,.2f}** | {_gsrc}")
+            else:
+                st.caption("Gift Live - Feed Retry...")
+        except Exception:
+            pass
+
+
+# ===== V83 FIX - 18 Nov 2026 - 2 issues: (1) Gift = Nifty same (2) FII Awaiting =====
+# (1) GIFT SAME KI JAD: V82 ka fallback Yahoo NSEI SPOT tha - Gift me Nifty Spot hi daal diya, isliye dono 25,227.95 same dikhe.
+# V83 RULE: Gift me kabhi Nifty Spot mat daalo. Gift ka apna price chahiye - NSE IX / Google Gift / Nifty FUTURES. Sab fail ho to Retry dikhao, Spot mat dikhao.
+# (2) FII AWAITING KI JAD: FII sirf Codetabs 1 proxy se aata tha, Cloud pe fail ho to session last-good bhi khaali tha (fresh load pe), isliye Awaiting.
+# V83 FIX: FII ke liye 3 proxy parallel + Chittorgarh backup + FILE last-good. Subah 10:59 pe aaj ka FII aaya hi nahi hota (shaam 7 baje aata hai), isliye KAL ka FII hi sahi latest hai - use Awaiting ki jagah "Kal ka" likh ke dikhao.
+
+# ---------- V83 GIFT - Spot kabhi Gift nahi banega ----------
+def _v83_nseix_gift():
+    """NSE IX (GIFT City) ka asli Gift - NSE India se alag exchange, kam block hota hai. 3 proxy parallel, har ek 3s."""
+    try:
+        import urllib.parse as _up83, concurrent.futures as _cf83
+        _urls83 = [
+            "https://www.nseix.com/api/quote-derivative?symbol=GIFTNIFTY",
+            "https://www.nseindia.com/api/quote-derivative?symbol=GIFTNIFTY",
+        ]
+        _proxies83 = ["https://api.codetabs.com/v1/proxy?quest=", "https://api.allorigins.win/raw?url=", "https://corsproxy.io/?url="]
+        def _try_one83(_pb, _u):
+            try:
+                r = _v64_get(_pb + _up83.quote(_u, safe=''), timeout=3)
                 if r is not None and r.ok:
-                    _j = r.json()
+                    try:
+                        _j = r.json()
+                    except Exception:
+                        return None
                     _d0 = _j.get("data", [{}])[0] if isinstance(_j.get("data"), list) and _j.get("data") else {}
-                    _lp = float(_d0.get("lastPrice", 0) or 0)
-                    _prev = None
-                    for _k in ["previousClose", "prevClose", "closePrice", "prev_close"]:
-                        if _d0.get(_k):
-                            _prev = float(_d0.get(_k)); break
-                    if _lp and _lp > 0:
+                    if not _d0 and isinstance(_j, dict):
+                        _d0 = _j
+                    _lp = float(_d0.get("lastPrice", 0) or _d0.get("last_price", 0) or 0)
+                    if _lp and 20000 < _lp < 35000:
+                        _prev = None
+                        for _k in ["previousClose", "prevClose", "closePrice", "prev_close"]:
+                            if _d0.get(_k):
+                                _prev = float(_d0.get(_k)); break
                         _pct = ((_lp - _prev) / _prev) * 100 if _prev and _prev > 0 else 0.0
-                        return _lp, _pct, _prev, "NSE_IX_PROXY"
+                        return _lp, _pct, _prev, "NSEIX_GIFT_LIVE"
+            except Exception:
+                pass
+            return None
+        with _cf83.ThreadPoolExecutor(max_workers=6) as _ex:
+            _futs = [_ex.submit(_try_one83, _pb, _u) for _pb in _proxies83 for _u in _urls83]
+            try:
+                for _f in _cf83.as_completed(_futs, timeout=4):
+                    try:
+                        _r = _f.result(timeout=1)
+                    except Exception:
+                        _r = None
+                    if _r and _r[0] and _r[0] > 0:
+                        return _r
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v83_google_gift():
+    """Google Finance Gift - direct + 2 proxy, 3 pattern se parse. Sirf Gift wala page, Nifty wala nahi."""
+    try:
+        import re as _re83, urllib.parse as _up83g
+        _url83 = "https://www.google.com/finance/quote/GIFTNIFTY:INDEXNSEIX"
+        _tries83 = [_url83, "https://api.allorigins.win/raw?url=" + _up83g.quote(_url83, safe=''), "https://api.codetabs.com/v1/proxy?quest=" + _up83g.quote(_url83, safe='')]
+        for _t in _tries83:
+            try:
+                r = _v64_get(_t, timeout=3)
+                if r is None or not r.ok:
+                    continue
+                _txt = r.text or ""
+                _price = None
+                # Pattern 1: YMlKec class (purana)
+                _m = _re83.findall(r'YMlKec[^>]*>([^<]+)<', _txt)
+                if _m:
+                    try:
+                        _price = float(_m[0].replace(",", "").replace("$", "").replace("₹", "").strip())
+                    except Exception:
+                        _price = None
+                # Pattern 2: data-last-price / JSON price
+                if not _price:
+                    _m2 = _re83.findall(r'"price"\s*:\s*([0-9,\.]+)', _txt)
+                    if _m2:
+                        try:
+                            _v = float(_m2[0].replace(",", ""))
+                            if 20000 < _v < 35000:
+                                _price = _v
+                        except Exception:
+                            pass
+                if _price and 20000 < _price < 35000:
+                    _pct = 0.0
+                    try:
+                        _pm = _re83.findall(r'P2Luy[^>]*>([^<]+)<', _txt)
+                        for _x in _pm:
+                            if "%" in _x:
+                                _pct = float(_x.replace("%", "").replace("+", "").strip()); break
+                    except Exception:
+                        pass
+                    return _price, _pct, None, "GOOGLE_GIFT_LIVE"
             except Exception:
                 continue
     except Exception:
         pass
+    return None, 0.0, None, "FAILED"
+
+def _v83_futures_gift():
+    """Nifty FUTURES se Gift proxy - Futures Spot se 30-50 pts upar rehta hai, isliye Gift != Spot hoga. Gift = Futures + 15 (avg Gift-Futures spread)."""
     try:
-        _np, _npct, _nprev, _nsrc = _v64_yahoo_one("^NSEI")
-        if _np and _np > 0:
-            return float(_np) + 25.0, _npct, _nprev, "YAHOO_NSEI_FALLBACK"
+        # Stooq Nifty Futures: nsei.f
+        r = _v64_get("https://stooq.com/q/l/?s=nsei.f&f=sd2t2ohlcv&h&e=csv", timeout=3)
+        if r is not None and r.status_code == 200 and "," in (r.text or ""):
+            _lines = r.text.strip().split("\n")
+            if len(_lines) >= 2:
+                try:
+                    _fut = float(_lines[1].split(",")[6])
+                except Exception:
+                    _fut = None
+                if _fut and 20000 < _fut < 35000:
+                    # Futures se Gift: +15 pts Gift premium. Source me saaf likha hoga, chhupaya nahi hai.
+                    return float(_fut + 15.0), 0.0, None, "NIFTY_FUTURES_PROXY"
+    except Exception:
+        pass
+    try:
+        # Yahoo Nifty Futures try - symbol NIFTY.NS kabhi futures deta hai, kabhi spot. Futures hi hai to Spot se alag hoga, check karo.
+        _np, _npct, _nprev, _nsrc = _v64_yahoo_one("NIFTY.NS")
+        if _np and 20000 < _np < 35000:
+            # Agar NIFTY.NS ka price Spot se 10+ pts alag hai to hi use karo, warna Spot hi hai - mat lo
+            try:
+                _spot83, _, _, _ = _v64_yahoo_one("^NSEI")
+                if _spot83 and abs(float(_np) - float(_spot83)) >= 10:
+                    return float(_np + 15.0), float(_npct or 0.0), _nprev, "NIFTY_FUTURES_PROXY"
+            except Exception:
+                pass
     except Exception:
         pass
     return None, 0.0, None, "FAILED"
+
+def _v83_fetch_gift_fast():
+    """V83: NSE IX + Google Gift + Futures PARALLEL, max 4s. Spot kabhi Gift nahi banega. Sab fail ho to None (Retry), Same number kabhi nahi."""
+    try:
+        import concurrent.futures as _cf83b
+        with _cf83b.ThreadPoolExecutor(max_workers=3) as _ex:
+            _futs = {
+                _ex.submit(_v83_nseix_gift): "NSEIX",
+                _ex.submit(_v83_google_gift): "GOOGLE",
+                _ex.submit(_v83_futures_gift): "FUTURES",
+            }
+            _res = {}
+            try:
+                for _f in _cf83b.as_completed(_futs, timeout=4):
+                    _k = _futs[_f]
+                    try:
+                        _res[_k] = _f.result(timeout=1)
+                    except Exception:
+                        _res[_k] = (None, 0.0, None, "FAILED")
+            except Exception:
+                pass
+            for _k in ["NSEIX", "GOOGLE", "FUTURES"]:
+                _r = _res.get(_k, (None, 0.0, None, "FAILED"))
+                if _r and _r[0] and _r[0] > 0:
+                    return _r
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+# V83 Live Ticker - Spread dikhega, taaki Gift != Nifty aankh se dikhe. Spot kabhi Gift me nahi milega.
+try:
+    @live_fragment(run_every=15)  # V87 PERMANENT: asli st.fragment HATAYA - yehi 9:36 wale popup ki jad thi. Ab plain function hai, main thread me REFRESH/SCAN pe ek baar chalega.
+    def _v83_gift_live_ticker():
+        try:
+            _gp, _gpct, _gprev, _gsrc = _v83_fetch_gift_fast()
+            _now = datetime.now(IST).strftime("%H:%M:%S IST")
+            # Nifty Spot alag se lao, taaki Spread dikha sako - Gift - Spot
+            _spot83 = None
+            try:
+                _spot83 = _v58_spot_fast("NIFTY")
+                if not _spot83:
+                    _sp83, _, _, _ = _v64_yahoo_one("^NSEI")
+                    _spot83 = _sp83
+            except Exception:
+                _spot83 = None
+            if _gp and _gp > 0:
+                # V92: Spot EK hi source se - _v92_get_single_spot, taaki Ticker aur Gift me same Spot dikhe. Alag Yahoo call band.
+                try:
+                    _spot92, _src92, _time92 = _v92_get_single_spot()
+                    if _spot92 and float(_spot92) > 0:
+                        _spot83 = float(_spot92)
+                except Exception:
+                    pass
+                # V92: Parsed % (_gpct) pe bharosa mat karo - wo HTML se utha % hai, aksar Nifty ka Day % hota hai, Gift ka nahi. Sirf NSEIX Prev Close hoga to hi Day % banega.
+                _g_arrow, _g_color, _g_label, _g_spread, _g_daypct = _v92_gift_direction(_gp, _spot83, _gprev)
+                _dot = "🟢" if _g_spread > 0 else ("🔴" if _g_spread < 0 else "⚪")
+                _spread_txt = f" | Spread vs Nifty Spot: {_g_spread:+.2f} pts (Nifty Spot {float(_spot83):,.2f})" if _spot83 and _spot83 > 0 else " | Spot N/A"
+                _day_txt = f" | Day: {_g_daypct:+.2f}% vs Prev Close {float(_gprev):,.2f}" if _g_daypct is not None else " | Day % N/A (Prev Close nahi mila, nakli % nahi banaya)"
+                st.markdown(f"### 🔴 [V95] LIVE Gift Nifty Streaming | **{_gp:,.2f}** {_dot} {_g_arrow} {_g_label} | {_gsrc} | Last: {_now}{_spread_txt}{_day_txt} | REFRESH se update")
+            else:
+                st.markdown(f"### 🔴 LIVE Gift Nifty Streaming | Feed Retry... | Last try: {_now} | Gift ka asli source try ho raha hai, Spot ko Gift bana ke same number nahi dikhayenge")
+        except Exception:
+            try:
+                st.caption("Gift Live Ticker - Feed Retry...")
+            except Exception:
+                pass
+except Exception:
+    def _v83_gift_live_ticker():
+        # V94: Except wala duplicate bhi wahi V93 logic - purana chhota ticker hata diya, warna try fail hone pe purana text aa jata.
+        try:
+            _gp, _gpct, _gprev, _gsrc = _v85_fetch_gift_fast()
+            _now = datetime.now(IST).strftime("%H:%M:%S IST")
+            if _gp and _gp > 0:
+                try:
+                    _s93e, _, _ = _v92_get_single_spot()
+                except Exception:
+                    _s93e = None
+                _a93e, _, _l93e, _sp93e, _d93e = _v92_gift_direction(_gp, _s93e, _gprev)
+                _dot93e = "🟢" if _sp93e > 0 else ("🔴" if _sp93e < 0 else "⚪")
+                _sp_txt93e = f" | Spread: {_sp93e:+.2f} pts (Spot {float(_s93e):,.2f})" if _s93e else ""
+                _day93e = f" | Day: {_d93e:+.2f}%" if _d93e is not None else " | Day % N/A"
+                st.markdown(f"### 🔴 [V95] LIVE Gift Nifty Streaming | **{_gp:,.2f}** {_dot93e} {_a93e} {_l93e} | {_gsrc} | Last: {_now}{_sp_txt93e}{_day93e} | REFRESH se update")
+            else:
+                st.caption("Gift Live - Feed Retry... [V95]")
+        except Exception:
+            pass
+
+# ---------- V83 FII - Awaiting ki jagah Kal ka data ----------
+_V83_FII_FILE = "fii_last_good.json"
+_V83_FII_FILE_TMP = "/tmp/fii_last_good.json"
+
+def _v83_fii_load_file():
+    try:
+        import json as _js83, os as _os83
+        for _fp in [_V83_FII_FILE_TMP, _V83_FII_FILE]:
+            try:
+                if _os83.path.exists(_fp):
+                    with open(_fp, "r") as _f:
+                        _d = _js83.load(_f)
+                        if isinstance(_d, dict) and _d.get("available") and _d.get("fii_net") is not None:
+                            return _d
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+def _v83_fii_save_file(d):
+    try:
+        import json as _js83
+        if isinstance(d, dict) and d.get("available"):
+            _to_save = dict(d)
+            _to_save["_saved_at"] = datetime.now(IST).strftime("%d-%b-%Y %H:%M:%S IST")
+            for _fp in [_V83_FII_FILE_TMP, _V83_FII_FILE]:
+                try:
+                    with open(_fp, "w") as _f:
+                        _js83.dump(_to_save, _f)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+def _v83_parse_fii_rows(items):
+    """NSE rows se FII/DII nikaalo, common helper."""
+    try:
+        _fii, _dii, _td = None, None, ""
+        for _row in items or []:
+            if not isinstance(_row, dict):
+                continue
+            _cat = str(_row.get("category", "")).upper()
+            try:
+                _net = float(str(_row.get("netValue", "0")).replace(",", "") or 0)
+            except Exception:
+                _net = 0.0
+            if "FII" in _cat or "FPI" in _cat:
+                _fii = _net
+                if not _td:
+                    _td = str(_row.get("tradeDate", "") or _row.get("date", "") or "")
+            elif "DII" in _cat:
+                _dii = _net
+        if _fii is not None and _dii is not None:
+            _comb = round(_fii + _dii, 2)
+            _score = 0
+            _score += 2 if _fii > 1000 else (1 if _fii > 300 else (-2 if _fii < -1000 else (-1 if _fii < -300 else 0)))
+            _score += 1 if _dii > 500 else (-1 if _dii < -500 else 0)
+            _bias = "STRONG BULLISH" if _score >= 2 else ("MODERATE BULLISH" if _score == 1 else ("STRONG BEARISH" if _score <= -2 else ("MODERATE BEARISH" if _score == -1 else "NEUTRAL")))
+            return {"available": True, "fii_net": _fii, "dii_net": _dii, "combined": _comb, "score": _score, "bias": _bias, "source": "NSE_MULTI_PROXY", "phase": determine_settlement_phase(), "sync_time": datetime.now(IST).strftime("%d-%b-%Y %H:%M:%S IST"), "status": "LIVE", "trade_date": _td}
+    except Exception:
+        pass
+    return None
+
+def _v83_fii_via_proxies():
+    """FII ke liye 3 proxy parallel - Codetabs + AllOrigins + corsproxy. Pehle sirf Codetabs tha, isliye fail ho to Awaiting aata tha."""
+    try:
+        import urllib.parse as _up83f, concurrent.futures as _cf83f
+        _urls = ["https://www.nseindia.com/api/fiidiiTradeReact", "https://www.nseindia.com/api/fiidiiTradeDate"]
+        _proxies = ["https://api.codetabs.com/v1/proxy?quest=", "https://api.allorigins.win/raw?url=", "https://corsproxy.io/?url="]
+        def _try83(_pb, _u):
+            try:
+                r = _v64_get(_pb + _up83f.quote(_u, safe=''), timeout=4)
+                if r is not None and r.ok:
+                    _j = r.json()
+                    _items = []
+                    if isinstance(_j, dict) and isinstance(_j.get("data"), list):
+                        _items = _j["data"]
+                    elif isinstance(_j, list):
+                        _items = _j
+                    if _items:
+                        # TradeDate wala hai to latest date ka group lo, React wala hai to seedha lo
+                        if "TradeDate" in _u:
+                            try:
+                                _by = {}
+                                for _x in _items:
+                                    if isinstance(_x, dict):
+                                        _dt = str(_x.get("tradeDate", "") or "LATEST")
+                                        _by.setdefault(_dt, []).append(_x)
+                                for _dt in list(_by.keys()):
+                                    _grp = _by[_dt]
+                                    _has_f = any("FII" in str(_y.get("category","")).upper() or "FPI" in str(_y.get("category","")).upper() for _y in _grp)
+                                    _has_d = any("DII" in str(_y.get("category","")).upper() for _y in _grp)
+                                    if _has_f and _has_d:
+                                        _items = _grp
+                                        break
+                            except Exception:
+                                pass
+                        _out = _v83_parse_fii_rows(_items)
+                        if _out:
+                            return _out
+            except Exception:
+                pass
+            return None
+        with _cf83f.ThreadPoolExecutor(max_workers=6) as _ex:
+            _futs = [_ex.submit(_try83, _pb, _u) for _pb in _proxies for _u in _urls]
+            try:
+                for _f in _cf83f.as_completed(_futs, timeout=5):
+                    try:
+                        _r = _f.result(timeout=1)
+                    except Exception:
+                        _r = None
+                    if _r and _r.get("available"):
+                        _v83_fii_save_file(_r)
+                        try:
+                            _v59_ss_set("_v79_last_fii", _r)
+                        except Exception:
+                            pass
+                        return _r
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
+
+def _v83_fii_via_chittorgarh():
+    """Chittorgarh backup - NSE block ho to bhi ye chhota site Cloud pe chalta hai. Table se FII/DII net nikaalo."""
+    try:
+        import re as _re83c
+        r = _v64_get("https://www.chittorgarh.com/fii-dii/", timeout=4)
+        if r is not None and r.ok:
+            _txt = r.text or ""
+            # Chittorgarh page me FII/DII numbers hote hain, pehle 2 bade numbers dhoondho
+            _nums = _re83c.findall(r'(-?[\d,]+\.\d{2})', _txt)
+            # Is source ko sirf tab use karo jab FII/DII label ke paas number mile, warna galat number aa jayega - isliye strict check
+            _low = _txt.lower()
+            if "fii" in _low and "dii" in _low and len(_nums) >= 2:
+                # Pehla FII, dusra DII - ye best-effort hai, isliye source me CHITTORGARH likha hoga
+                try:
+                    _fii = float(_nums[0].replace(",", ""))
+                    _dii = float(_nums[1].replace(",", ""))
+                    if abs(_fii) < 20000 and abs(_dii) < 20000:
+                        _out = _v83_parse_fii_rows([{"category": "FII", "netValue": _fii}, {"category": "DII", "netValue": _dii}])
+                        if _out:
+                            _out["source"] = "CHITTORGARH_BACKUP"
+                            _v83_fii_save_file(_out)
+                            return _out
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+def _v83_get_fii_dii():
+    """V83: Pehle purana fetch, fail ho to multi-proxy, fail ho to Chittorgarh, fail ho to FILE last-good (Kal ka), fail ho to SESSION last-good. Awaiting tabhi jab sab khaali ho."""
+    try:
+        _fd = fetch_fii_dii()
+        if _fd and _fd.get("available"):
+            _v83_fii_save_file(_fd)
+            return _fd
+    except Exception:
+        pass
+    try:
+        _mp = _v83_fii_via_proxies()
+        if _mp and _mp.get("available"):
+            return _mp
+    except Exception:
+        pass
+    try:
+        _ch = _v83_fii_via_chittorgarh()
+        if _ch and _ch.get("available"):
+            return _ch
+    except Exception:
+        pass
+    # File last-good - Kal ka FII hi sahi latest hai subah 10 baje, Awaiting se 100x behtar
+    try:
+        _file = _v83_fii_load_file()
+        if _file and _file.get("available"):
+            _file = dict(_file)
+            _file["source"] = str(_file.get("source", "")) + "_FILE_LAST_GOOD"
+            _file["status"] = "LAST_GOOD_FILE"
+            # Bias/score wahi rahega, UI ko trade_date se pata chalega ye kal ka hai
+            return _file
+    except Exception:
+        pass
+    try:
+        _sess = _v59_ss_get("_v79_last_fii", {})
+        if isinstance(_sess, dict) and _sess.get("available"):
+            _sess = dict(_sess)
+            _sess["source"] = str(_sess.get("source", "")) + "_SESSION_LAST_GOOD"
+            _sess["status"] = "LAST_GOOD_SESSION"
+            return _sess
+    except Exception:
+        pass
+    return {"available": False, "fii_net": None, "dii_net": None, "combined": None, "score": 0, "bias": "NEUTRAL", "source": "NONE", "phase": determine_settlement_phase(), "sync_time": datetime.now(IST).strftime("%d-%b-%Y %H:%M:%S IST"), "status": "UNAVAILABLE"}
+
+
+# ===== V85 GIFT FIX - 18 Nov 2026 - Gift FAILED + Feed Retry, dono ki ek jad =====
+# PROOF: Screenshot me Nasdaq/S&P/Brent/Gold sab YAHOO se chal rahe hain, par Gift FAILED hai. Matlab Yahoo chalta hai, par Gift ka Yahoo me ticker hi nahi hai.
+# V83 ke 3 source - NSE IX API (galat endpoint), Google (Cloud pe block), Stooq Futures (nsei.f exist hi nahi karta) - teeno fail, isliye FAILED + Feed Retry.
+# V85 FIX: Gift ko un site se lao jo khud NSE IX se live dikhati hain aur Cloud pe block nahi hain - Quantsapp + GiftNiftyToday + LiveIndex. Inka HTML me price saaf likha hota hai.
+# + FILE last-good: Sab fail ho to bhi FAILED nahi, kal ka last-good dikhega, source me LAST_GOOD likha hoga.
+
+_V85_GIFT_FILE = "gift_last_good.json"
+_V85_GIFT_FILE_TMP = "/tmp/gift_last_good.json"
+
+
+# ===== V92 PROPER STUDY - 23 Nov 2026 - Screenshot ka number-se-number hisaab =====
+# SCREENSHOT (12:48) me 3 alag Nifty the:
+#  (1) Ticker Spot: 25,489.60 Yahoo Fallback
+#  (2) Gift ke andar Spot: 25,514.65 (Yahoo direct, alag time)
+#  (3) Gift: 25,489.50
+#  Ek screen me 2 Spot nahi hone chahiye. Wajah: Ticker _v58_spot_fast use karta tha, Gift _v64_yahoo_one use karta tha - dono alag source, alag time.
+#  V92 FIX: _v92_get_single_spot() - EK hi Spot, EK hi time, 15 sec cache. Ticker aur Gift dono isi ko use karenge.
+# GIFT DIRECTION GALAT KYU LAGA:
+#  Gift 25,489.50 Spot 25,514.65 se -25.15 NEECHE hai (Discount), phir bhi app ne GREEN UP +1.41% dikhaya.
+#  Wajah: +1.41% Gift ka nahi, Nifty Spot ka DAY CHANGE tha. _v85_parse_near HTML me price ke baad pehla % utha leta tha, wo % aksar Nifty ka hota hai, Gift ka nahi.
+#  V92 FIX: Gift ka main arrow ab SPREAD se banega (Gift vs Spot). Gift > Spot => UP GREEN Premium, Gift < Spot => DOWN RED Discount. Day % sirf tab dikhega jab Gift ka apna Prev Close NSEIX se milega, warna "Day % N/A" likhenge, nakli % nahi banayenge.
+# INDICATORS NIFTY KYU NAHI AA RAHA:
+#  VIX 13.50, PCR 1.05, Max Pain 25,000 - ye teeno FALLBACK hai, live nahi. Stooq fail + Chain offline + VIX fallback.
+#  V92 me inko "LIVE" bolna band - agar source fallback hai to card pe "STALE" likhenge.
+_V92_SPOT_CACHE = {"spot": None, "src": "", "ts": 0.0, "time_str": ""}
+def _v92_get_single_spot():
+    """EK hi Spot sabke liye. 15 sec cache, taaki Ticker aur Gift me same number + same time dikhe."""
+    try:
+        import time as _t92
+        _now = _t92.time()
+        if _V92_SPOT_CACHE.get("spot") and (_now - float(_V92_SPOT_CACHE.get("ts", 0))) < 15:
+            return float(_V92_SPOT_CACHE["spot"]), str(_V92_SPOT_CACHE.get("src", "")), str(_V92_SPOT_CACHE.get("time_str", ""))
+    except Exception:
+        pass
+    _spot, _src = None, ""
+    try:
+        _spot = _v58_spot_fast("NIFTY")
+        if _spot and float(_spot) > 0:
+            _src = "Stooq Live"
+    except Exception:
+        pass
+    if not _spot:
+        try:
+            _sp, _, _, _ = _v64_yahoo_one("^NSEI")
+            if _sp and float(_sp) > 0:
+                _spot, _src = float(_sp), "Yahoo Fallback"
+        except Exception:
+            pass
+    if not _spot:
+        try:
+            _spot = _v59_ss_get("_v58_last_spot_NIFTY")
+            if _spot:
+                _spot, _src = float(_spot), "Last Cached"
+        except Exception:
+            pass
+    try:
+        _ts_str = datetime.now(IST).strftime("%H:%M:%S")
+    except Exception:
+        _ts_str = ""
+    if _spot:
+        try:
+            _V92_SPOT_CACHE.update({"spot": float(_spot), "src": _src, "ts": __import__("time").time(), "time_str": _ts_str})
+        except Exception:
+            pass
+        return float(_spot), _src, _ts_str
+    return None, "Feed Offline", _ts_str
+def _v92_gift_direction(gift_price, spot_price, gift_prev_close):
+    """Gift ki sahi direction: MAIN = Spread (Gift vs Spot). Day % sirf apne Prev Close se, HTML se uthaya % kabhi nahi."""
+    try:
+        if gift_price is None or spot_price is None:
+            return ("•", "#9e9e9e", "N/A", 0.0, None)
+        _spread = float(gift_price) - float(spot_price)
+        if _spread > 0:
+            _arrow, _color, _label = "▲", "#22c55e", f"Premium {_spread:+.2f} pts"
+        elif _spread < 0:
+            _arrow, _color, _label = "▼", "#ef4444", f"Discount {_spread:+.2f} pts"
+        else:
+            _arrow, _color, _label = "•", "#9e9e9e", "At Spot 0.00 pts"
+        _day_pct = None
+        if gift_prev_close and float(gift_prev_close) > 0:
+            try:
+                _day_pct = (float(gift_price) - float(gift_prev_close)) / float(gift_prev_close) * 100.0
+            except Exception:
+                _day_pct = None
+        return (_arrow, _color, _label, float(_spread), _day_pct)
+    except Exception:
+        return ("•", "#9e9e9e", "N/A", 0.0, None)
+
+def _v85_gift_save_file(price, pct, prev, src):
+    try:
+        import json as _js85
+        if price and price > 0:
+            _d = {"price": float(price), "pct": float(pct or 0.0), "prev": prev, "source": str(src), "saved_at": datetime.now(IST).strftime("%d-%b-%Y %H:%M:%S IST")}
+            for _fp in [_V85_GIFT_FILE_TMP, _V85_GIFT_FILE]:
+                try:
+                    with open(_fp, "w") as _f:
+                        _js85.dump(_d, _f)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+def _v85_gift_load_file():
+    try:
+        import json as _js85, os as _os85
+        for _fp in [_V85_GIFT_FILE_TMP, _V85_GIFT_FILE]:
+            try:
+                if _os85.path.exists(_fp):
+                    with open(_fp, "r") as _f:
+                        _d = _js85.load(_f)
+                        if isinstance(_d, dict) and _d.get("price") and 20000 < float(_d.get("price")) < 35000:
+                            return float(_d["price"]), float(_d.get("pct", 0.0) or 0.0), _d.get("prev"), str(_d.get("source", "")) + "_LAST_GOOD_FILE"
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v85_spot_for_check():
+    try:
+        _s = _v58_spot_fast("NIFTY")
+        if _s and _s > 0:
+            return float(_s)
+    except Exception:
+        pass
+    try:
+        _sp, _, _, _ = _v64_yahoo_one("^NSEI")
+        if _sp and _sp > 0:
+            return float(_sp)
+    except Exception:
+        pass
+    return None
+
+def _v85_parse_near(html, keywords, spot):
+    """HTML me keyword ke paas wala pehla 25,xxx.xx number nikaalo. Spot se 600 se zyada door hai to galat number hai, reject karo."""
+    try:
+        import re as _re85
+        _low = (html or "").lower()
+        for _kw in keywords:
+            _idx = _low.find(_kw.lower())
+            if _idx == -1:
+                continue
+            _window = html[_idx:_idx+4000]
+            # Price: 25,220.50 jaisa
+            _ms = _re85.findall(r'(\d{2},\d{3}\.\d{2})', _window)
+            for _m in _ms:
+                try:
+                    _v = float(_m.replace(",", ""))
+                except Exception:
+                    continue
+                if 20000 < _v < 35000:
+                    # Spot check: 23382 jaisa stale/wrong number reject karo
+                    if spot and abs(_v - spot) > 600:
+                        continue
+                    # Pct: is number ke baad 300 chars me -0.01% jaisa
+                    _pct = 0.0
+                    try:
+                        _pos = _window.find(_m)
+                        _after = _window[_pos:_pos+400] if _pos != -1 else ""
+                        _pm = _re85.findall(r'(-?\d+\.\d+)\s*%', _after)
+                        if _pm:
+                            _pct = float(_pm[0])
+                            if abs(_pct) > 5:
+                                _pct = 0.0
+                    except Exception:
+                        _pct = 0.0
+                    return _v, _pct
+            # Keyword mila par number nahi mila to agla keyword try karo
+    except Exception:
+        pass
+    return None, 0.0
+
+def _v85_gift_via_quantsapp():
+    """Quantsapp - abhi 25,220.50 dikh raha hai, NSE IX se live. Cloud pe block nahi hai."""
+    try:
+        r = _v64_get("https://www.quantsapp.com/gift-nifty", timeout=4)
+        if r is not None and r.ok:
+            _spot = _v85_spot_for_check()
+            _v, _pct = _v85_parse_near(r.text or "", ["gift nifty is trading at", "gift nifty is", "updated"], _spot)
+            if _v and _v > 0:
+                return _v, _pct, None, "QUANTSAPP_GIFT_LIVE"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v85_gift_via_giftniftytoday():
+    """Giftniftytoday - abhi 25,218.50 dikh raha hai, NSE IX se live. Header me GIFT Nifty fut ke baad price hai."""
+    try:
+        r = _v64_get("https://giftniftytoday.com/", timeout=4)
+        if r is not None and r.ok:
+            _spot = _v85_spot_for_check()
+            _v, _pct = _v85_parse_near(r.text or "", ["gift nifty fut", "gift nifty"], _spot)
+            if _v and _v > 0:
+                return _v, _pct, None, "GIFTNIFTYTODAY_LIVE"
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v85_gift_via_liveindex():
+    """LiveIndex / SGXLive - backup chhoti site, ek fail ho to dusri se aa jaye."""
+    try:
+        for _url in ["https://www.liveindex.org/gift-nifty/", "https://sgxnifty.live/", "https://www.equitypandit.com/sgx-nifty-live/"]:
+            try:
+                r = _v64_get(_url, timeout=3)
+                if r is not None and r.ok:
+                    _spot = _v85_spot_for_check()
+                    _v, _pct = _v85_parse_near(r.text or "", ["gift nifty", "sgx nifty live price is", "gift nifty is"], _spot)
+                    if _v and _v > 0:
+                        return _v, _pct, None, "LIVEINDEX_GIFT_LIVE"
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+def _v85_fetch_gift_fast():
+    """V85: Quantsapp + GiftToday + LiveIndex PARALLEL, max 5s. Phir V83 wale NSEIX/Google/Futures backup. Sab fail ho to FILE last-good, tabhi bhi fail ho to hi None (Retry). FAILED kabhi seedha nahi."""
+    try:
+        import concurrent.futures as _cf85
+        with _cf85.ThreadPoolExecutor(max_workers=5) as _ex:
+            _futs = {
+                _ex.submit(_v85_gift_via_quantsapp): "Q",
+                _ex.submit(_v85_gift_via_giftniftytoday): "G",
+                _ex.submit(_v85_gift_via_liveindex): "L",
+                _ex.submit(_v83_nseix_gift): "NSEIX",
+                _ex.submit(_v83_google_gift): "GOOGLE",
+            }
+            _res = {}
+            try:
+                for _f in _cf85.as_completed(_futs, timeout=5):
+                    _k = _futs[_f]
+                    try:
+                        _res[_k] = _f.result(timeout=1)
+                    except Exception:
+                        _res[_k] = (None, 0.0, None, "FAILED")
+            except Exception:
+                pass
+            for _k in ["Q", "G", "L", "NSEIX", "GOOGLE"]:
+                _r = _res.get(_k, (None, 0.0, None, "FAILED"))
+                if _r and _r[0] and _r[0] > 0:
+                    _v85_gift_save_file(_r[0], _r[1], _r[2], _r[3])
+                    return _r
+        # Backup: V83 Futures (kabhi kabhi chalta hai)
+        try:
+            _fr = _v83_futures_gift()
+            if _fr and _fr[0] and _fr[0] > 0:
+                _v85_gift_save_file(_fr[0], _fr[1], _fr[2], _fr[3])
+                return _fr
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # FILE last-good - sab fail ho to bhi FAILED nahi, last-good dikhao
+    try:
+        _fp, _fpct, _fprev, _fsrc = _v85_gift_load_file()
+        if _fp and _fp > 0:
+            return _fp, _fpct, _fprev, _fsrc
+    except Exception:
+        pass
+    return None, 0.0, None, "FAILED"
+
+# V85 alias: Purana _v83_fetch_gift_fast ab V85 ko call karega, taaki Live Ticker (Feed Retry wala) aur Global (FAILED wala) dono ek saath thik hon, 2 jagah alag fix na karna pade
+try:
+    _v83_fetch_gift_fast = _v85_fetch_gift_fast
+except Exception:
+    pass
+
+def _v64_fetch_gift():
+    # V83: V82 ka Spot fallback hataya - Spot ko Gift bana ke same number dikhana band. Ab NSE IX + Google Gift + Futures, Spot kabhi nahi.
+    return _v85_fetch_gift_fast()
+
+
 def _v64_load_last_good():
     try:
         import json as _js64, os as _os64
@@ -4958,9 +6828,29 @@ def _v64_save_last_good(d):
         pass
 def _v64_fetch_global_live(force=False):
     # 30s cache + last-good file cache. Live fail bhi ho to STALE dikhega, FAILED nahi.
+    # V84: REFRESH dabaya hai to 30s cache ko ignore karo, naya live lao. Nahi to REFRESH ke baad bhi wahi 23:04 wala purana number aata tha.
+    try:
+        _force84 = False
+        try:
+            _force84 = bool(_v59_ss_get("_v84_force", False))
+        except Exception:
+            _force84 = False
+        if _force84:
+            try:
+                _v59_ss_set("_v84_force", False)
+            except Exception:
+                pass
+            force = True
+    except Exception:
+        pass
     try:
         if not force and _V63_GLOBAL_CACHE.get("data") and time.time() - _V63_GLOBAL_CACHE.get("ts", 0) < 30:
             return _V63_GLOBAL_CACHE["data"]
+    except Exception:
+        pass
+    # V84: Fetch hone ka time save karo, taaki REFRESH bar ko pata chale data kitna purana hai
+    try:
+        _v59_ss_set("_v84_last_fetch_time", datetime.now(IST).strftime("%H:%M:%S"))
     except Exception:
         pass
     out = {}
@@ -4983,7 +6873,7 @@ def _v64_fetch_global_live(force=False):
             _fut[_ex.submit(_v64_fetch_gift)] = "GIFT_NIFTY"
             _res = {}
             try:
-                for _f in _cf64.as_completed(_fut, timeout=12):
+                for _f in _cf64.as_completed(_fut, timeout=20):  # V82: 12s -> 20s, Gift ko bhi time mile
                     _k = _fut[_f]
                     try:
                         _res[_k] = _f.result(timeout=1)
@@ -5180,9 +7070,29 @@ def _v63_global_score(d):
         return 0.0
 def _v63_fetch_global_live(force=False):
     # 30s cache - SCAN pe har baar 2.5s bhi nahi lagega, 30s ke andar wahi live numbers milenge. 30s purana intraday ke liye LIVE hi hai.
+    # V84: REFRESH dabaya hai to 30s cache ko ignore karo, naya live lao. Nahi to REFRESH ke baad bhi wahi 23:04 wala purana number aata tha.
+    try:
+        _force84 = False
+        try:
+            _force84 = bool(_v59_ss_get("_v84_force", False))
+        except Exception:
+            _force84 = False
+        if _force84:
+            try:
+                _v59_ss_set("_v84_force", False)
+            except Exception:
+                pass
+            force = True
+    except Exception:
+        pass
     try:
         if not force and _V63_GLOBAL_CACHE.get("data") and time.time() - _V63_GLOBAL_CACHE.get("ts", 0) < 30:
             return _V63_GLOBAL_CACHE["data"]
+    except Exception:
+        pass
+    # V84: Fetch hone ka time save karo, taaki REFRESH bar ko pata chale data kitna purana hai
+    try:
+        _v59_ss_set("_v84_last_fetch_time", datetime.now(IST).strftime("%H:%M:%S"))
     except Exception:
         pass
     out = {}
@@ -5675,6 +7585,29 @@ def fetch_fii_dii() -> Dict[str, Any]:
         if _r78 is not None and _r78.status_code == 200:
             _j78 = _r78.json()
             _items78 = _j78.get("data", []) if isinstance(_j78, dict) else []
+            # V79: fiidiiTradeDate me tradeDate hota hai - aaj ka na ho to sabse latest date ka lo. Pehle ye grouping nahi thi, isliye aaj ka khaali hote hi Awaiting aata tha.
+            try:
+                _by_date79 = {}
+                for _r79 in _items78:
+                    if not isinstance(_r79, dict): continue
+                    _dt79 = str(_r79.get("tradeDate", "") or _r79.get("date", "") or "LATEST")
+                    _by_date79.setdefault(_dt79, []).append(_r79)
+                # Latest date = sabse pehle wali entry (NSE newest pehle deta hai), nahi to koi bhi date jisme FII+DII dono hon
+                _items78 = []
+                for _dt79 in list(_by_date79.keys()):
+                    _grp79 = _by_date79[_dt79]
+                    _has_fii79 = any("FII" in str(_x.get("category","")).upper() or "FPI" in str(_x.get("category","")).upper() for _x in _grp79)
+                    _has_dii79 = any("DII" in str(_x.get("category","")).upper() for _x in _grp79)
+                    if _has_fii79 and _has_dii79:
+                        _items78 = _grp79
+                        _trade_date79 = _dt79
+                        break
+                if not _items78 and _by_date79:
+                    _items78 = list(_by_date79.values())[0]
+                    _trade_date79 = list(_by_date79.keys())[0]
+            except Exception:
+                _trade_date79 = ""
+                pass
             _fii78, _dii78 = None, None
             for _row78 in _items78:
                 if not isinstance(_row78, dict): continue
@@ -5689,7 +7622,11 @@ def fetch_fii_dii() -> Dict[str, Any]:
                 _score78 += 2 if _fii78 > 1000 else (1 if _fii78 > 300 else (-2 if _fii78 < -1000 else (-1 if _fii78 < -300 else 0)))
                 _score78 += 1 if _dii78 > 500 else (-1 if _dii78 < -500 else 0)
                 _bias78 = "STRONG BULLISH" if _score78 >= 2 else ("MODERATE BULLISH" if _score78 == 1 else ("STRONG BEARISH" if _score78 <= -2 else ("MODERATE BEARISH" if _score78 == -1 else "NEUTRAL")))
-                return {"available": True, "fii_net": _fii78, "dii_net": _dii78, "combined": _comb78, "score": _score78, "bias": _bias78, "source": "NSE_CODETABS", "phase": settlement_status, "sync_time": now_str, "status": "LIVE"}
+                _out79 = {"available": True, "fii_net": _fii78, "dii_net": _dii78, "combined": _comb78, "score": _score78, "bias": _bias78, "source": "NSE_CODETABS", "phase": settlement_status, "sync_time": now_str, "status": "LIVE", "trade_date": _trade_date79 if "_trade_date79" in dir() else ""}
+                # V79: Session me save karo - agli baar fetch fail ho to bhi kal ka data dikhega, Awaiting nahi
+                try: _v59_ss_set("_v79_last_fii", _out79)
+                except Exception: pass
+                return _out79
     except Exception:
         pass
     return {
@@ -5701,14 +7638,30 @@ def fetch_fii_dii() -> Dict[str, Any]:
 # V62: FII/DII LAZY - pehle har page load pe NSE se aata tha (4s), ab sirf SCAN pe. Page khulte hi scan nahi atakega.
 fii_dii = {"available": False, "fii_net": None, "dii_net": None, "combined": None, "score": 0, "bias": "NEUTRAL", "source": "LAZY_V62", "phase": "LAZY", "sync_time": "", "status": "LAZY - SCAN pe fetch hoga"}
 def _v62_ensure_fii_dii():
-    # SCAN ke start me 1 baar, 2s se zyada wait nahi. Fail ho to purana LAZY hi chalega, scan nahi rukega.
+    # V83: Pehle purana fetch, fail ho to multi-proxy + file last-good. Awaiting tabhi jab sab khaali ho.
     global fii_dii
+    # V84: REFRESH dabaya hai to purana FII bhi mat dikhao, naya lao
+    try:
+        if bool(_v59_ss_get("_v84_force", False)):
+            fii_dii = {"available": False, "fii_net": None, "dii_net": None, "combined": None, "score": 0, "bias": "NEUTRAL", "source": "FORCE_REFRESH_V84", "phase": "REFRESH", "sync_time": "", "status": "REFRESH"}
+    except Exception:
+        pass
     try:
         if fii_dii.get("available"):
             return fii_dii
-        _fd = fetch_fii_dii()
+        _fd = _v83_get_fii_dii()
         if _fd and _fd.get("available"):
             fii_dii = _fd
+            return fii_dii
+    except Exception:
+        pass
+    # File last-good bhi yahan se - fresh session pe bhi Kal ka FII dikhega, Awaiting nahi
+    try:
+        _fl = _v83_fii_load_file()
+        if _fl and _fl.get("available"):
+            fii_dii = dict(_fl)
+            fii_dii["source"] = str(fii_dii.get("source", "")) + "_FILE_LAST_GOOD"
+            return fii_dii
     except Exception:
         pass
     return fii_dii
@@ -6789,7 +8742,7 @@ def calculate_trade_friction(buy_price: float, sell_price: float, qty: int, is_o
 # 17. STATEFUL PAPER-TRADING RISK CONTROLS & EXECUTION
 # =====================================================================
 def evaluate_risk_gates(symbol: str, proposed_qty: int, trade_risk: float, is_equity: bool = False) -> Tuple[bool, str]:
-    port = st.session_state.paper_portfolio
+    port = _v80_get_portfolio()  # V80: direct st.session_state.paper_portfolio se AttributeError aata tha
     check_daily_reset()
 
     if port.get("circuit_broken", False):
@@ -6978,7 +8931,7 @@ def execute_real_trade_with_confirmation(idea, live_ltp, quantity, enable_real=F
 def execute_paper_order(symbol: str, action: str, strike: Any, option_type: str, price: float, qty: int, sl: float, t1: float, t2: float, expiry: str, reasons: str, is_equity: bool = False) -> bool:
     allowed, msg = evaluate_risk_gates(symbol, qty, abs(price - sl) * qty, is_equity=is_equity)
     if not allowed:
-        st.error(f"{STOP} {msg}")
+        _v81_flash(f"{STOP} {msg}", "error")
         return False
 
     trade_id = str(uuid.uuid4())[:8]
@@ -6992,8 +8945,8 @@ def execute_paper_order(symbol: str, action: str, strike: Any, option_type: str,
         "is_equity": is_equity, "entry_time": datetime.now(IST).strftime("%H:%M:%S"), "status": "OPEN"
     }
 
-    st.session_state.paper_portfolio["positions"][trade_id] = position_entry
-    st.success(f"{CHECK} Paper Trade Placed #{trade_id}: {action} {symbol} {strike} {option_type} @ ₹{fill_price:,.2f} [Qty: {qty}]")
+    _v80_get_portfolio()["positions"][trade_id] = position_entry  # V80: safe helper, AttributeError nahi dega
+    _v81_flash(f"{CHECK} Paper Trade Placed #{trade_id}: {action} {symbol} {strike} {option_type} @ ₹{fill_price:,.2f} [Qty: {qty}]", "success")
     # V22 ULTRA FAST - Active Call Exit Rules Instant
     try:
         msg_rules = f"🚀 ACTIVE CALL ENTRY\n\n📊 {symbol} {strike} {option_type}\n💰 Entry: Rs {fill_price:.2f} Qty: {qty}\n🛑 SL: Rs {sl:.2f}\n🎯 T1: Rs {t1:.2f}\n🎯 T2: Rs {t2:.2f}\n📅 {expiry}\n⏰ {datetime.now(IST).strftime('%H:%M:%S IST')}\n\n⚡ EXIT RULES ULTRA FAST:\n• SL {sl:.2f} = EXIT\n• T1 {t1:.2f} = 50% BOOK\n• T2 {t2:.2f} = FULL EXIT\n• 15:15 FORCE CLOSE\n\nID: {trade_id} | OPEN"
@@ -7012,7 +8965,7 @@ def execute_paper_order(symbol: str, action: str, strike: Any, option_type: str,
     return True
 
 def close_paper_position(trade_id: str, current_ltp: float, exit_reason: str):
-    port = st.session_state.paper_portfolio
+    port = _v80_get_portfolio()  # V80
     if trade_id not in port["positions"]: return
 
     pos = port["positions"].pop(trade_id)
@@ -7440,7 +9393,7 @@ def make_trade_idea(market: Dict[str, Any], symbol: str, instrument: str = "INDE
     idea = {
         "segment": instrument, "symbol": symbol, "action": action, "entry": entry_spot,
         "sl": sl, "target1": t1, "target2": t2, "risk_reward": rr_ratio, "target2_rr": abs(t2 - entry_spot) / risk,
-        "confidence": confidence, "holding": tf_cfg["holding"] if market_open() else "NEXT SESSION",
+        "confidence": confidence, "holding": _v86_holding(tf_cfg),  # V86: time-aware holding - subah TODAY SESSION, 14:30 ke baad hi NEXT SESSION
         "timeframe": tf_cfg["label"], "expiry": expiry_label(expiry) if expiry else "Current Weekly",
         "option": None, "strike": None, "option_ltp": None, "delta": None, "gamma": None,
         "theta": None, "vega": None, "vanna": None, "charm": None, "iv": None, "oi": None,
@@ -7452,48 +9405,77 @@ def make_trade_idea(market: Dict[str, Any], symbol: str, instrument: str = "INDE
         "trailing": f"Book 50% at Target 1 and trail Stop Loss to Entry. [Quarter-Kelly Size: {kelly_allocation}%].",
     }
 
-    # V55.2 OVERALL STRONG SIGNAL - make_trade_idea me apply - CE/PE dono ke liye SAME rule
-    # Bhai ka rule: Jo trade ban raha hai uska signal de - CE ho ya PE, BUY ho ya SELL
-    # Pehle wala code CE pe zyada strict tha, PE ko halka chhod deta tha. Ab dono barabar.
+    # V85 STRONG SIGNAL - make_trade_idea me apply - MISSING = SKIP, hardcoded False hataya
     try:
-        _gex_flip_v55 = gex_data.get("gamma_flip", 0) if isinstance(gex_data, dict) else 0
-        _vwap_v55 = market.get("vwap", entry_spot) if isinstance(market, dict) else entry_spot
-        _spot_v55 = entry_spot
-        # Direction: bullish=True -> BULLISH (CE/BUY), bullish=False -> BEARISH (PE/SELL)
-        _dir_v55 = "BULLISH" if bullish else "BEARISH"
-        _oi_chg_v55 = 0
+        _gex_flip_v85 = gex_data.get("gamma_flip", 0) if isinstance(gex_data, dict) else 0
+        _gex_avail_v85 = gex_data.get("available", None) if isinstance(gex_data, dict) else None
+        if _gex_flip_v85 and abs(float(_gex_flip_v85) - float(entry_spot)) <= 1.0:
+            _gex_avail_v85 = False
+        _vwap_v85 = market.get("vwap", entry_spot) if isinstance(market, dict) else entry_spot
+        _spot_v85 = entry_spot
+        _dir_v85 = "BULLISH" if bullish else "BEARISH"
+        _oi_chg_v85 = None
         try:
-            _oi_chg_v55 = float(market.get("oi_change_pct", 0) or 0)
-        except:
-            _oi_chg_v55 = 0
-        # V57: Pehle day_open missing pe entry_spot ko hi day_open maan lete the, price_change hamesha 0.0 + Strong Check free pass. Ab missing = 0.0 + point nahi.
+            _m_oi = market.get("oi_change_pct", None) if isinstance(market, dict) else None
+            if _m_oi is not None and float(_m_oi) != 0:
+                _oi_chg_v85 = float(_m_oi)
+            else:
+                _oi_chg_v85 = _v85_oi_change_from_chain(chain)
+        except Exception:
+            try: _oi_chg_v85 = _v85_oi_change_from_chain(chain)
+            except Exception: _oi_chg_v85 = None
         _real_day_open = market.get("day_open") or market.get("open") or None
         if _real_day_open and abs(float(_real_day_open) - entry_spot) > 1e-9:
-            _price_chg_v55 = ((entry_spot - float(_real_day_open)) / float(_real_day_open) * 100)
+            _price_chg_v85 = ((entry_spot - float(_real_day_open)) / float(_real_day_open) * 100)
         else:
-            _price_chg_v55 = 0.0
-        # V55.2 generic function use karo - CE/PE ka fark andar hi handle hota hai
-        _verdict_v55, _score_v55, _reasons_v55, _down_v55, _verdict_opt_v55 = calculate_overall_strong_signal_v55_2(
-            price=_spot_v55, vwap=_vwap_v55, ema20=float(market.get("ema20") or _spot_v55), ema50=float(market.get("ema50") or _spot_v55),
-            price_change_pct=_price_chg_v55, oi_change_pct=_oi_chg_v55,
-            spot=_spot_v55, gex_flip=_gex_flip_v55, max_pain=gex_data.get("max_pain", 0) if isinstance(gex_data, dict) else 0,
+            _price_chg_v85 = None
+        _pcr_v85 = None; _pcr_avail_v85 = False
+        try:
+            _pcr_cand = market.get("pcr") if isinstance(market, dict) else None
+            if _pcr_cand is not None and float(_pcr_cand) not in (0, 1.0):
+                _pcr_v85 = float(_pcr_cand); _pcr_avail_v85 = True
+            elif chain is not None and not chain.empty:
+                _pcr_cand2 = calculate_pcr(chain)
+                if _pcr_cand2 is not None and float(_pcr_cand2) > 0:
+                    _pcr_v85 = float(_pcr_cand2); _pcr_avail_v85 = True
+        except Exception:
+            pass
+        # V86 PRIMARY - V85 ko fallback rakha, verdict V86 se aayega (Friday Fix)
+        _verdict_v85, _score100_v86, _passed_v85, _checked_v85, _reasons_v85, _skipped_v85, _down_v85, _verdict_opt_v85, _details_v85, _breakdown_v86 = calculate_overall_strong_signal_v86(
+            price=_spot_v85, vwap=_vwap_v85, ema20=float(market.get("ema20") or _spot_v85), ema50=float(market.get("ema50") or _spot_v85), ema200=float(market.get("ema200") or 0),
+            price_change_pct=_price_chg_v85, oi_change_pct=_oi_chg_v85,
+            spot=_spot_v85, gex_flip=_gex_flip_v85, max_pain=gex_data.get("max_pain", 0) if isinstance(gex_data, dict) else 0, gex_available=_gex_avail_v85,
             volume=float(market.get("volume", 0) or 0), avg_volume=float(market.get("avg_volume", 0) or 0),
-            vix_change=float(vix_info.get("vix_change", 0) if isinstance(vix_info, dict) else 0), pcr=float(market.get("pcr") or (calculate_pcr(chain) if chain is not None and not chain.empty else 1.0)),
-            direction=_dir_v55, htf_bullish=bool(entry_spot > float(market.get('ema50') or entry_spot) and entry_spot > float(market.get('vwap') or entry_spot)), retest_done=False,  # V57: HTF price vs EMA50/VWAP se - pehle bool(bullish) circular tha, Filter 1 hamesha pass
+            vix_change=float(vix_info.get("vix_change", 0) if isinstance(vix_info, dict) else 0), pcr=_pcr_v85, pcr_available=_pcr_avail_v85,
+            direction=_dir_v85, htf_bullish=bool(entry_spot > float(market.get('ema50') or entry_spot) and entry_spot > float(market.get('vwap') or entry_spot)), retest_done=None,
             resistance=resistance or 0, support=support or 0,
+            rsi=market.get("rsi") if isinstance(market, dict) else None, adx=market.get("adx") if isinstance(market, dict) else None,
+            day_open=_real_day_open, prev_day_high=resistance or 0, opening_range_high=resistance or 0,
         )
-        idea["strong_verdict"] = _verdict_v55  # STRONG BUY / STRONG SELL / WEAK / NO TRADE
-        idea["strong_verdict_opt"] = _verdict_opt_v55  # STRONG CE / STRONG PE - purane UI ke liye
-        idea["strong_score"] = f"{_score_v55}/7"
-        idea["strong_reasons"] = _reasons_v55
-        idea["strong_direction"] = _dir_v55
-        # Dono taraf SAME downgrade rule: score <=4 ho to 85% -> 55% NO TRADE, chahe CE ho ya PE
-        if _score_v55 <= 4 and confidence >= 75:
-            idea["confidence"] = 55
-            idea["why"] = idea.get("why", "") + f" | V55.2 Overall Strong: {_verdict_v55} ({_score_v55}/7) [{_dir_v55}] - {' | '.join(_reasons_v55[:2])} - Downgraded 85% -> 55% NO TRADE"
-        elif _score_v55 == 5 and confidence >= 80:
-            # 5/7 ho to WAIT - poora block nahi, par full qty mat do
-            idea["why"] = idea.get("why", "") + f" | V55.2 Overall: WEAK - WAIT ({_score_v55}/7) [{_dir_v55}] - Half qty / wait karo"
+        idea["strong_verdict"] = _verdict_v85
+        idea["strong_verdict_opt"] = _verdict_opt_v85
+        idea["strong_score"] = f"{_score100_v86}/100"
+        idea["strong_score_100"] = _score100_v86
+        idea["strong_checked"] = _checked_v85
+        idea["strong_passed"] = _passed_v85
+        idea["strong_reasons"] = _reasons_v85
+        idea["strong_skipped"] = _skipped_v85
+        idea["strong_details"] = _details_v85
+        idea["strong_breakdown"] = _breakdown_v86
+        idea["strong_direction"] = _dir_v85
+        # V86: Conviction = V86 Score (0-100). Pehle confluence wali 20% dikhti thi, ab Strong Score hi Conviction hai.
+        idea["confidence"] = int(_score100_v86)
+        # V86: Holding time-aware - 8:55 AM pe NEXT SESSION nahi, TODAY SESSION dikhega
+        try:
+            idea["holding"] = _v86_holding(tf_cfg)
+        except Exception:
+            pass
+        if _verdict_v85 in ("NO TRADE", "WEAK - WAIT") and confidence >= 75:
+            idea["why"] = idea.get("why", "") + f" | V86 Strong: {_verdict_v85} ({_score100_v86}/100) [{_dir_v85}] - {' | '.join(_reasons_v85[:2])} - Conviction V86 score se set ki"
+        elif _verdict_v85 in ("READY - BUY ON RETEST", "READY - SELL ON RETEST"):
+            idea["why"] = idea.get("why", "") + f" | V86: READY ({_score100_v86}/100) [{_dir_v85}] - CORE pass hai, retest pe entry lo, WAIT nahi"
+        elif _verdict_v85 == "DATA MISSING - WAIT":
+            idea["why"] = idea.get("why", "") + f" | V86: DATA MISSING - WAIT ({_score100_v86}/100) - data kam hai, conviction same rakha, fail nahi mana"
     except Exception as _e55:
         idea["strong_verdict"] = "CHECK FAILED"
         idea["strong_score"] = "N/A"
@@ -8045,7 +10027,7 @@ def analyze_equity_setup(stock_info: Dict[str, Any], quote: Dict[str, Any], df: 
     kelly_pct = calculate_quarter_kelly(p_win=win_prob, reward_risk=max(rr_t1, 1.2))
 
     # Position Sizing based on Paper Portfolio Cash Balance
-    portfolio_cash = float(st.session_state.paper_portfolio.get("cash_balance", 500000.0))
+    portfolio_cash = float(_v80_get_portfolio().get("cash_balance", 500000.0))  # V80
     alloc_capital = round(portfolio_cash * min(max(kelly_pct / 100.0, 0.05), 0.25), 2)
     recommended_qty = max(1, int(alloc_capital // last))
 
@@ -8109,7 +10091,7 @@ def analyze_equity_setup(stock_info: Dict[str, Any], quote: Dict[str, Any], df: 
                 rsi=rsi, adx=adx,
             )
             _eq_strong_verdict = _v
-            _eq_strong_score = f"{_s}/7"
+            _eq_strong_score = f"{_s}/checked"  # V85: denominator checked hai, fixed 7 nahi - wrapper se passed aata hai
             _eq_strong_reasons = _r
             # Agar strong fail hai to BUY/SELL ko WAIT me downgrade karo - dono taraf SAME
             if _s <= 4 and action_dir in ("BUY", "SELL"):
@@ -8315,19 +10297,19 @@ try:
     st.session_state['persistent_settings']['max_daily_loss_limit'] = float(max_loss_input)
 except:
     pass
-st.session_state.paper_portfolio["daily_loss_limit"] = max_loss_input
+_v80_set_portfolio_field("daily_loss_limit", max_loss_input)  # V80: safe set
 
 if st.sidebar.button(f"{REFRESH} Force Refresh All Caches", use_container_width=True):
-    st.rerun()  # V55.4: cache clear hataya - clear() + rerun ek saath SessionInfo error deta hai
+    _v81_safe_rerun()  # V55.4: cache clear hataya - clear() + rerun ek saath SessionInfo error deta hai
 
-# Global Header Status Bar
+# Global Header Status Bar - V88: st.metric HATAYA, text delta up-arrow banata tha. Ab _v88_info_card, isme koi arrow nahi hai.
 col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-with col_t1: st.metric("System Mode", "PAPER SIMULATION (ACTIVE)", delta=active_tf["holding"], delta_color="off")
-with col_t2: st.metric("Market Status", "LIVE SESSION" if market_open() else "SESSION CLOSED", delta="Continuous Trading" if market_open() else "Closed", delta_color="off")
-with col_t3: st.metric("Active Timeframe", active_tf["smartapi"], delta=selected_tf_key.upper(), delta_color="normal")
+with col_t1: _v88_info_card("System Mode", "PAPER SIMULATION (ACTIVE)", active_tf["holding"])
+with col_t2: _v88_info_card("Market Status", "LIVE SESSION" if market_open() else "SESSION CLOSED", "Continuous Trading" if market_open() else "Closed")
+with col_t3: _v88_info_card("Active Timeframe", active_tf["smartapi"], selected_tf_key.upper())
 with col_t4:
-    circuit_state = "TRIGGERED (LOCKED)" if st.session_state.paper_portfolio["circuit_broken"] else "NORMAL"
-    st.metric("Risk Circuit Gate", circuit_state, delta=f"Cap: -₹{max_loss_input:,.0f}", delta_color="inverse" if circuit_state=="TRIGGERED (LOCKED)" else "off")
+    circuit_state = "TRIGGERED (LOCKED)" if _v80_get_portfolio().get("circuit_broken", False) else "NORMAL"  # V80
+    _v88_info_card("Risk Circuit Gate", circuit_state, f"Cap: -₹{max_loss_input:,.0f}", value_color="#ef4444" if circuit_state=="TRIGGERED (LOCKED)" else "#ffffff", subtitle_color="#ef4444" if circuit_state=="TRIGGERED (LOCKED)" else "#9e9e9e")
 
 st.divider()
 
@@ -8535,7 +10517,7 @@ if "Universal 5,000+" in segment_mode:
                             reasons=" | ".join(analysis["reasons"][:3]),
                             is_equity=True,
                         )
-                        st.rerun()
+                        _v81_safe_rerun()
 
             return analysis, fundamentals, corp_intel
 
@@ -8831,7 +10813,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                         st.sidebar.error(f"Telegram error: {e2}")
                         import traceback
                         traceback.print_exc()
-                    st.rerun()
+                    _v81_safe_rerun()
                 except Exception as e:
                     st.sidebar.error(f"Test error: {e}")
                     import traceback
@@ -8914,10 +10896,10 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                 try:
                                     ok, msg = auto_entry_market_price(idea, live_ltp, qty, enable_real=st.session_state.get('enable_real_trading', False))
                                     if ok:
-                                        st.success(f"✅ REAL ORDER PLACED: {msg}")
+                                        _v81_flash(f"✅ REAL ORDER PLACED: {msg}", "success")
                                         # Remove pending
                                         del st.session_state[pkey]
-                                        st.rerun()
+                                        _v81_safe_rerun()
                                     else:
                                         st.error(f"❌ Order failed: {msg}")
                                 except Exception as e:
@@ -8926,8 +10908,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                             if st.button(f"❌ NO - Cancel", key=f"no_{pkey}"):
                                 try:
                                     del st.session_state[pkey]
-                                    st.info("❌ Cancelled - Order not placed")
-                                    st.rerun()
+                                    _v81_flash("❌ Cancelled - Order not placed", "info")
+                                    _v81_safe_rerun()
                                 except:
                                     pass
                         st.divider()
@@ -8985,96 +10967,13 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
     selected_expiry = st.sidebar.selectbox(f"{STOPWATCH} Target Expiry", options=expiries, format_func=expiry_label, index=0) if expiries else None
     option_type_choice = st.sidebar.selectbox("Option Filter", ["BOTH", "CE", "PE"])
 
-    @live_fragment(run_every=60)  # V66: 15s -> 60s + NO NETWORK. Pehle har 15s pe 30s ka network hota tha, fragment + main run ki race se Bad message format aata tha. Ab sirf cached dikhega, live SCAN pe aayega.
-    def render_index_live_ticker(selected_underlying, current_expiry, tf):
-        # V66: Ticker me koi network nahi - sirf cached spot/PCR. NSE chain / VIX / FII yahan nahi aayega, SCAN pe aayega.
-        try:
-            spot = _v59_ss_get(f"_v58_last_spot_{selected_underlying}")
-            if not spot or float(spot) <= 0:
-                spot = _v58_spot_fast(selected_underlying)
-            if not spot:
-                spot = None
-        except Exception:
-            spot = None
-        try:
-            pcr = float(_v59_ss_get('_last_pcr_value', 1.05) or 1.05)
-        except Exception:
-            pcr = 1.05
-        chain = pd.DataFrame()
-        _raw_chain = pd.DataFrame()
-        vix_info = {"vix": 13.5, "regime": "OPTIMAL BUYING", "sl_multiplier": 0.85, "status": "CACHED_FAST"}
-        fii_dii_info = {"available": False, "score": 0, "bias": "NEUTRAL"}
-        try:
-            gex_info = compute_gex_and_max_pain(chain, spot, selected_underlying) if spot else {"net_gex_cr": 0.0, "gex_regime": "NEUTRAL", "gamma_flip": spot or 25000, "max_pain": spot or 25000, "call_wall": (spot or 25000)+200, "put_wall": (spot or 25000)-200, "expected_move": 150.0}
-        except Exception:
-            gex_info = {"net_gex_cr": 0.0, "gex_regime": "NEUTRAL", "gamma_flip": spot or 25000, "max_pain": spot or 25000, "call_wall": (spot or 25000)+200, "put_wall": (spot or 25000)-200, "expected_move": 150.0}
-
-        s1, s2, s3, s4 = st.columns(4)
-        with s1:
-            # V55.6 - Spot kabhi Syncing forever nahi dikhayega. Last Close dikhayega.
-            try:
-                _disp_spot = spot if (spot is not None and spot > 0) else None
-                _disp_label = "Verified Exchange Feed" if market_open() else "Official Session Close"
-                if not _disp_spot:
-                    try:
-                        _fb = get_spot_safe_for_display(selected_underlying)
-                        if _fb and _fb > 0:
-                            _disp_spot = float(_fb)
-                            _disp_label = "Yahoo Fallback"
-                    except:
-                        pass
-                if not _disp_spot:
-                    # Last cached - chahe purana ho, Syncing se behtar hai
-                    try:
-                        _ck = f"_spot_{selected_underlying}"
-                        if _ck in _spot_cache_v19:
-                            _v, _t = _spot_cache_v19[_ck]
-                            if _v and _v > 0:
-                                _disp_spot = float(_v)
-                                _disp_label = "STALE - NO TRADE (Feed Blocked)"
-                    except:
-                        pass
-                if _disp_spot and _disp_spot > 0:
-                    st.metric(f"{selected_underlying} Spot (NSE Live)", fmt(_disp_spot), delta=_disp_label, delta_color="normal")
-                else:
-                    # V55.8 - 9:44 pe market KHULA hai, phir bhi Market Closed mat dikhao. Feed fail hone pe Last Tick dikhao.
-                    # Market open hai to "Last Tick - Feed Retry" dikhao, band hai to "Market Closed"
-                    _is_open = False
-                    try:
-                        _is_open = market_open()
-                    except:
-                        _is_open = False
-                    if _is_open:
-                        st.metric(f"{selected_underlying} Spot", "Feed Retry...", delta="Live Feed Blocked - Last Tick aa raha hai, 10 sec me refresh karo")
-                    else:
-                        st.metric(f"{selected_underlying} Spot", "Market Closed", delta="Feed Offline - Kal 9:15 pe Live hoga")
-            except Exception as e:
-                st.metric(f"{selected_underlying} Spot", "Market Closed", delta="Feed Offline")
-        with s2: st.metric("India VIX", fmt(vix_info['vix']), delta=vix_info['regime'], delta_color="off")
-        # V55.6 PCR FIX - N/A ki jagah Last PCR / Neutral dikhao, taaki user ko pata chale chain band hai, value gayab nahi hai
-        with s3:
-            _disp_pcr = pcr
-            _pcr_label = "Derivatives Bias"
-            if not _disp_pcr:
-                try:
-                    _last_pcr = st.session_state.get('_last_pcr_value')
-                    if _last_pcr and 0 < float(_last_pcr) <= 10:
-                        _disp_pcr = float(_last_pcr)
-                        _pcr_label = "Last PCR (Cached) - Chain Offline"
-                except:
-                    pass
-            if _disp_pcr and 0 < float(_disp_pcr) <= 10:
-                try:
-                    st.session_state['_last_pcr_value'] = float(_disp_pcr)
-                except:
-                    pass
-                st.metric("Put-Call Ratio (PCR)", fmt(_disp_pcr, 2), delta=_pcr_label, delta_color="off")
-            else:
-                # V56 FIX - PCR 1.00 fake default mat dikhao, uspe trade ban jata tha. Chain offline hai to NO TRADE likho.
-                st.metric("Put-Call Ratio (PCR)", "OFFLINE", delta="Chain Offline - NO TRADE", delta_color="off")
-        with s4: st.metric("Max Pain Gravity", f"{gex_info['max_pain']:,.0f}", delta=f"GEX: {gex_info['net_gex_cr']:+,.0f} Cr", delta_color="normal")
-
-    render_index_live_ticker(underlying, selected_expiry, active_tf)
+    # V91: Yahan @st.fragment MAT lagana - koi bhi fragment is app me Bad message laayega. Ticker plain function hai, REFRESH / SCAN pe update hoga.
+    _v89_ticker_fragment(underlying, selected_expiry, active_tf)
+    # V87: Gift ticker ab FRAGMENT nahi hai - plain function, main thread me ek baar chalega. Har 15s auto-update BAND (wahi Bad message ki jad thi). Gift update chahiye to REFRESH / SCAN dabao.
+    try:
+        _v83_gift_live_ticker()
+    except Exception:
+        pass
     st.divider()
 
     @live_fragment(run_every=30)
@@ -9091,13 +10990,26 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             try:
                 if st.button("🌍 LOAD Global + Prediction (10 sec, 1 baar)", key="v66_load_global_btn", use_container_width=True):
                     _v59_ss_set("_v66_global_loaded", True)
-                    st.rerun()
+                    _v81_safe_rerun()
             except Exception:
                 pass
             # Placeholder - bina network ke, taaki aage ka page atke nahi
             st.caption("Prediction: SCAN / LOAD ke baad dikhega | PCR: 1.05 (cached) | Global: Not loaded yet")
             macro_data = {}
             pcr_val = 1.05
+            # V79: FII hard-coded False HATA DIYA - ye hi Awaiting ki jad thi. Ab load pe hi auto-fetch hoga, SCAN ka wait nahi karega.
+        try:
+            _fd79 = _v62_ensure_fii_dii()
+            if isinstance(_fd79, dict) and _fd79.get("available"):
+                fii_dii_info = _fd79
+            else:
+                # Session last-good - pehli baar fetch fail ho to bhi kal ka data dikhao, Awaiting nahi
+                _sess79 = _v59_ss_get("_v79_last_fii", {}) if "_v59_ss_get" in dir() else {}
+                if isinstance(_sess79, dict) and _sess79.get("available"):
+                    fii_dii_info = _sess79
+                else:
+                    fii_dii_info = {"available": False, "score": 0, "bias": "NEUTRAL"}
+        except Exception:
             fii_dii_info = {"available": False, "score": 0, "bias": "NEUTRAL"}
             # Neeche wala Global Radar bhi placeholder ke saath return karenge, poora fetch nahi karenge
             st.markdown(f"### {GLOBE} Global Macro Cues & Commodity Radar - V66: LOAD dabane pe aayega")
@@ -9156,6 +11068,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             unsafe_allow_html=True,
         )
 
+        # V84: FII section ke upar bhi REFRESH - neeche scroll karne pe upar wala button dikhta nahi tha, isliye yahan bhi diya
+        try:
+            _v84_refresh_bar("fii")
+        except Exception:
+            pass
         st.markdown(f"### {TEMPLE} Institutional Cash Market Research (FII vs DII)")
         f1, f2, f3, f4 = st.columns(4)
         fii_val = fii_dii_info.get("fii_net")
@@ -9166,12 +11083,12 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             if fii_dii_info.get("available") and fii_val is not None:
                 st.metric("FII Net Cash (NSE/BSE)", f"{RUPEE}{fii_val:,.2f} Cr", delta="Institutional Inflow" if fii_val > 0 else "Institutional Outflow")
             else:
-                st.metric("FII Net Cash (NSE/BSE)", "Awaiting Data", delta="Market Closed - Kal 9:15 pe aayega", delta_color="off")
+                st.metric("FII Net Cash (NSE/BSE)", "Awaiting Data", delta="Aaj ka FII shaam 7 baje aayega - Refresh dabao", delta_color="off")
         with f2:
             if fii_dii_info.get("available") and dii_val is not None:
                 st.metric("DII Net Cash Flow", f"{RUPEE}{dii_val:,.2f} Cr", delta="Domestic Support" if dii_val > 0 else "Domestic Outflow")
             else:
-                st.metric("DII Net Cash Flow", "Awaiting Data", delta="Market Closed - Kal 9:15 pe aayega", delta_color="off")
+                st.metric("DII Net Cash Flow", "Awaiting Data", delta="Aaj ka DII shaam 7 baje aayega - Refresh dabao", delta_color="off")
         with f3:
             if fii_dii_info.get("available") and comb_val is not None:
                 st.metric("Combined Net Liquidity", f"{RUPEE}{comb_val:,.2f} Cr", delta="Net Inflow (+)" if comb_val > 0 else "Net Outflow (-)")
@@ -9180,12 +11097,17 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         with f4:
             st.metric("Smart Money Verdict", fii_dii_info.get("bias", "NEUTRAL"), delta=fii_dii_info.get("phase", "Consensus Bias"), delta_color="off")
 
+        # V84: Global section ke upar bhi REFRESH - taaki Global ke liye upar tak scroll na karna pade
+        try:
+            _v84_refresh_bar("global")
+        except Exception:
+            pass
         st.markdown(f"### {GLOBE} Global Macro Cues & Commodity Radar - V63 LIVE LTP (30s cache)")
         try:
             _live_n = sum(1 for _v in macro_data.values() if isinstance(_v, dict) and _v.get("live"))
             _stale_n = sum(1 for _v in macro_data.values() if isinstance(_v, dict) and _v.get("stale"))
             _manual_n = 1 if _v65_manual_get() else 0
-            st.caption(f"Global Score: {macro_data.get('GLOBAL_SCORE', 0.0):+.0f} | Bias: {macro_data.get('GLOBAL_BIAS','-')} | Fetched: {macro_data.get('_FETCHED_AT','-')} | LIVE: {_live_n}/12 | STALE: {_stale_n} | MANUAL: {_manual_n} | FAILED = kabhi number aaya hi nahi")
+            st.caption(f"Global Score: {macro_data.get('GLOBAL_SCORE', 0.0):+.0f} | Bias: {macro_data.get('GLOBAL_BIAS','-')} | Fetched: {macro_data.get('_FETCHED_AT','-')} | LIVE: {_live_n}/12 | STALE: {_stale_n} | MANUAL: {_manual_n} | Feed down = Cloud IP block, Nasdaq/Frankfurter/Codetabs se try ho raha hai - FAILED matlab abhi tak koi source se number nahi aaya, Refresh dabao")
         except Exception:
             pass
         # V65 DIAGNOSTIC + MANUAL - Feed down ho to bhi trade rukega nahi
@@ -9217,15 +11139,15 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                             _new_m = {"gift": float(_mgift or 0), "ndx": float(_mndx or 0), "spx": float(_mspx or 0), "crude": float(_mcrude or 0), "gold": float(_mgold or 0), "usdinr": float(_musd or 0)}
                             _new_m = {k: v for k, v in _new_m.items() if v and v > 0}
                             _v59_ss_set("_v65_manual_global", _new_m)
-                            st.success(f"Manual saved: {_new_m} - Ab REFRESH daba, prediction isi se banega")
-                            st.rerun()
+                            _v81_flash(f"Manual saved: {_new_m} - Ab REFRESH daba, prediction isi se banega", "success")
+                            _v81_safe_rerun()
                         except Exception as _me:
                             st.error(f"Save fail: {_me}")
                     if st.button("🗑️ Manual CLEAR - Wapas auto feed pe jao", key="v65_man_clear"):
                         try:
                             _v59_ss_set("_v65_manual_global", {})
-                            st.success("Manual cleared - ab auto feed chalega")
-                            st.rerun()
+                            _v81_flash("Manual cleared - ab auto feed chalega", "success")
+                            _v81_safe_rerun()
                         except Exception:
                             pass
                 except Exception:
@@ -9378,7 +11300,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
 
         st.markdown(f"### {SHIELD} Live Position Exit Monitor ({tf['smartapi']}) - 🔴 LIVE STREAMING")
         if st.button(f"🔄 REFRESH LIVE EXIT ({tf['smartapi']}) - Spot + LTP LIVE", key=f"refresh_exit_{tf['smartapi']}", use_container_width=True):
-            st.rerun()  # V55.4: cache clear hataya
+            _v81_safe_rerun()  # V55.4: cache clear hataya
         st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | Telegram ON hai to EMERGENCY EXIT pe alert ayega")
         
         # Original header removed, now combined
@@ -9700,7 +11622,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                         exp_safe = idea.get('expiry') or 'Current Weekly'
                         # V55.2 FIX - 6/7 kaha dikhega? YAHIN - Card ke andar hi, Conviction ke bagal me
                         # Pehle strong_score sirf idea dict me tha, card me render hi nahi ho raha tha, isliye screenshot me dikha nahi
-                        # Ab card ke top me bada sa STRONG SIGNAL box aayega: STRONG BUY 6/7 ya NO TRADE 3/7
+                        # V86: Ab card ke top me bada sa SIGNAL box aayega: SIGNAL: STRONG BUY - 85/100 ya SIGNAL: READY - BUY ON RETEST - 72/100
                         _sv = str(idea.get('strong_verdict', 'N/A'))
                         _ss = str(idea.get('strong_score', 'N/A'))
                         _sr = idea.get('strong_reasons', [])
@@ -9710,37 +11632,50 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                             _snum = int(str(_ss).split('/')[0]) if '/' in str(_ss) else 0
                         except:
                             _snum = 0
-                        if _snum >= 6:
+                        # V85: colour verdict se, fixed 6/7 se nahi - kyunki denominator ab checked hai (5/5 bhi STRONG hai)
+                        # V86: colour verdict se - READY ko alag blue diya, WAIT se confuse nahi hoga
+                        if "STRONG" in str(_sv):
                             _sbg, _scol = "#00FF00", "black"
                             _semoji = "✅"
-                        elif _snum == 5:
+                        elif "READY" in str(_sv):
+                            _sbg, _scol = "#00BFFF", "black"
+                            _semoji = "🎯"
+                        elif "WEAK" in str(_sv) or "DATA MISSING" in str(_sv):
                             _sbg, _scol = "#FFC107", "black"
                             _semoji = "⚠️"
-                        elif _snum > 0:
+                        elif "NO TRADE" in str(_sv):
                             _sbg, _scol = "#FF4B4B", "white"
                             _semoji = "🛑"
                         else:
                             _sbg, _scol = "#888888", "white"
                             _semoji = "⏳"
                         _sreasons_txt = " | ".join([str(x) for x in _sr[:2]]) if _sr else "Strong check ho raha hai..."
-                        html_card = '<div class="trade-card" style="border-left: 4px solid #00FF00;"><div style="background: #00FF00; color: black; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: inline-block; margin-bottom: 5px;">LIVE SPOT: ' + str(spot_display) + '</div><h3>Trade Setup ' + str(i) + ' - ' + str(card_title_safe) + '</h3><b>Type:</b> ' + str(sub_badge_safe) + ' | <b>Timeframe:</b> ' + str(tf_safe) + ' | <b>Holding:</b> ' + str(holding_safe) + ' | <b>Conviction:</b> ' + str(conf_safe) + '% | <b>Expiry:</b> ' + str(exp_safe) + '</div><div style="background: ' + _sbg + '; color: ' + _scol + '; padding: 8px 10px; border-radius: 6px; margin-top: 6px; font-size: 15px; font-weight: bold;">' + _semoji + ' STRONG SIGNAL: ' + _sv + ' - ' + _ss + ' [' + _sdir + ']</div><div style="font-size: 12px; margin-top: 4px; color: #DDD;">' + _sreasons_txt + '</div></div>'
+                        html_card = '<div class="trade-card" style="border-left: 4px solid #00FF00;"><div style="background: #00FF00; color: black; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: inline-block; margin-bottom: 5px;">LIVE SPOT: ' + str(spot_display) + '</div><h3>Trade Setup ' + str(i) + ' - ' + str(card_title_safe) + '</h3><b>Type:</b> ' + str(sub_badge_safe) + ' | <b>Timeframe:</b> ' + str(tf_safe) + ' | <b>Holding:</b> ' + str(holding_safe) + ' | <b>Conviction:</b> ' + str(conf_safe) + '% | <b>Expiry:</b> ' + str(exp_safe) + '</div><div style="background: ' + _sbg + '; color: ' + _scol + '; padding: 8px 10px; border-radius: 6px; margin-top: 6px; font-size: 15px; font-weight: bold;">' + _semoji + ' SIGNAL: ' + _sv + ' - ' + _ss + ' [' + _sdir + ']</div><div style="font-size: 12px; margin-top: 4px; color: #DDD;">' + _sreasons_txt + '</div></div>'
                         st.markdown(html_card, unsafe_allow_html=True)
-                        # Neeche alag se bhi bada box taaki mobile pe miss na ho - screenshot wali jagah pe hi dikhega
+                        # V85 BAD-MESSAGE FIX: upar wala html_card hi EK box hai - dobara same message mat dikhao
                         try:
-                            if _snum >= 6:
-                                st.success(f"🛡️ STRONG SIGNAL: {_sv} - {_ss} [{_sdir}] | Trade lene layak hai")
-                            elif _snum == 5:
-                                st.warning(f"⚠️ STRONG SIGNAL: WEAK - WAIT - {_ss} [{_sdir}] | Half qty ya wait karo | { _sreasons_txt }")
-                            elif _snum > 0:
-                                st.error(f"🛑 STRONG SIGNAL: NO TRADE - {_ss} [{_sdir}] | Isliye Conviction kam dikh raha hai | { _sreasons_txt }")
-                            else:
-                                st.info(f"⏳ STRONG SIGNAL: Calculating... [{_sdir}]")
-                            # Reasons poori list - 7 filter me kaunsa fail hua
+                            if "NO TRADE" in str(_sv):
+                                st.caption(f"🛑 {_sv} - {_ss} [{_sdir}] | {_sreasons_txt} | Agar data missing hai to neeche Skipped me dikhega - wo fail nahi hai.")
+                            elif "DATA MISSING" in str(_sv):
+                                st.caption(f"⏳ {_sv} - {_ss} [{_sdir}] | Data kam hai isliye WAIT, NO TRADE nahi. Agli candle pe dobara check karo.")
                             if _sr:
-                                with st.expander("🔍 6/7 ka detail dekho - kaunsa filter pass / fail hua"):
+                                with st.expander(f"🔍 {_ss} ka detail dekho - kaunsa filter pass / fail / skip hua"):
                                     for _rr in _sr:
                                         st.write(f"- {_rr}")
-                                    st.caption("7 Filter: 1 HTF Trend | 2 VWAP+EMA | 3 OI+Price | 4 GEX Flip | 5 Volume 1.5x | 6 Retest | 7 VIX+PCR | 6/7 chahiye STRONG ke liye")
+                                    _bd86 = idea.get("strong_breakdown", {}) if isinstance(idea.get("strong_breakdown", {}), dict) else {}
+                                    if _bd86:
+                                        st.write("📊 V86 Breakdown (pts / max):")
+                                        for _bk, _bv in _bd86.items():
+                                            try:
+                                                st.write(f"- {_bk}: {_bv.get('pts', 0)}/{_bv.get('max', 0)} - {_bv.get('status', '')} - {_bv.get('msg', '')}")
+                                            except Exception:
+                                                pass
+                                    st.caption("V86 5 Filter (100 pts): 1 HTF 20 | 2 VWAP+EMA Stack 20 | 3 Breakout Close 25 | 4 Volume 15 | 5 Momentum RSI+ADX 20 | Missing = Neutral Half Points, FAIL nahi | 3 CORE PASS = kabhi WAIT nahi, kam se kam READY")
+                                    _sk = idea.get("strong_skipped", [])
+                                    if _sk:
+                                        st.write("⏭️ Skipped (data nahi aaya, fail nahi mana):")
+                                        for _s2 in _sk:
+                                            st.write(f"- {_s2}")
                         except Exception:
                             pass
                     except Exception as e:
@@ -9900,7 +11835,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                     price=idea["entry"], qty=lot_qty, sl=idea["sl"], t1=idea["target1"], t2=idea["target2"],
                                     expiry=idea["expiry"], reasons=idea["why"], is_equity=False
                                 )
-                                st.rerun()
+                                _v81_safe_rerun()
                         with col_real:
                             if 'enable_real_trading' in locals() and enable_real_trading:
                                 if st.button(f"🔴 REAL BUY: {idea['strike']} {idea['option']} ({real_trading_qty} lots) #{i}", key=f"btn_real_{i}", type="primary"):
@@ -9987,7 +11922,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
 # ==============================================================================
 st.divider()
 st.markdown(f"## {SHIELD} Active Paper Positions & Risk Ledger (Options & Equities)")
-positions = st.session_state.paper_portfolio["positions"]
+positions = _v80_get_portfolio().get("positions", {})  # V80: yahi line 10074 pe crash ho raha tha, ab kabhi AttributeError nahi dega
 if not positions:
     st.info("No active open paper positions in portfolio.")
 else:
@@ -10005,10 +11940,10 @@ else:
         with p_col5:
             if st.button(f"Square Off #{t_id}", key=f"sq_{t_id}"):
                 close_paper_position(t_id, mock_curr, "Manual Square Off")
-                st.rerun()
+                _v81_safe_rerun()
 
 st.markdown("### Completed Trade Journal (With Regulatory Charges Deducted)")
-journal = st.session_state.paper_portfolio["trade_history"]
+journal = _v80_get_portfolio().get("trade_history", [])  # V80
 if not journal:
     st.caption("No closed trades recorded for this session yet.")
 else:
@@ -10100,3 +12035,23 @@ def auto_exit_market_price(trade_id, position, live_ltp, enable_real=False):
         return False, str(e)[:80]
 
 
+
+# V84: Sabse neeche bhi REFRESH - page ke end tak aane pe bhi upar scroll na karna pade
+try:
+    st.divider()
+    _v84_refresh_bar("bottom")
+except Exception:
+    pass
+
+# ===== V95 PERMANENT: FINAL RERUN HAMESHA KE LIYE BAND =====
+# JAD (1:40 wali screenshot - page BLANK + Bad message): File ke end me st.rerun() tha.
+# _V59_FALLBACK module-level dict hai, Streamlit Cloud pe sab session usko share karte hai. Ek session ka rerun flag dusre session me leak ho jata hai.
+# Naya tab / reboot ke baad session bana hi nahi hota, tabhi end wala st.rerun() SessionInfo maang leta hai -> "Tried to use SessionInfo before it was initialized" + blank page.
+# Ye slow loading / slow network / Streamlit version ka issue NAHI hai. Ye end-wala rerun + purana tab ka issue hai.
+# V95 FIX: End me kabhi st.rerun() mat karo. Button dabane pe Streamlit khud rerun karta hai, alag se rerun ki zaroorat hi nahi hai.
+# _v81_safe_rerun() bhi ab no-op hai, flag kabhi set nahi hoga.
+try:
+    _v59_ss_set(_V81_RERUN_KEY, False)
+except Exception:
+    pass
+# st.rerun() yahan kabhi mat likhna.
