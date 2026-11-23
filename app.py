@@ -1,3 +1,18 @@
+# ===== CLEANED SAFE MODE - 23 Nov 2026 - Option 1 (User chose 1) =====
+# Kya badla:
+#  1) REAL TRADING HARD OFF - place_angel_real_order / execute_real_trade_with_confirmation / auto_entry / auto_exit ab hamesha (False, "disabled") return karte hain.
+#     Wo kabhi broker secrets nahi padhte, kabhi SmartAPI login nahi karte, kabhi order nahi bhejte. enable_real=True bhi ignore hota hai.
+#  1b) Angel LTP login bhi OFF - get_angel_ltp_100pct_broker_match ab 0 return karta hai, caller NSE chain LTP pe fallback karega. Koi broker login nahi hoga.
+#  2) Sidebar ke REAL checkboxes / number_input hataye - enable_real_trading / auto_real_entry / auto_real_exit hamesha False.
+#  3) Session / persistent me bhi enable_real_trading / auto_real_* hamesha False likha jata hai, purani ON value wapas nahi aayegi.
+#  4) Duplicate top-level functions hatayi - sirf LAST definition rakhi (Python pehle se wahi chalata tha, behaviour same).
+#  5) Bare except -> except Exception as _clean_e: + logging.warning, taaki error chhupe nahi.
+#  6) _v80_get_portfolio fix - stored object return karta hai, copy nahi, taaki mutate karne se save ho.
+# Kya NAHI badla: Paper trading, signals, chain/PCR/GEX, Global, FII/DII, Telegram alerts (sirf alert, order nahi) - sab waisa hi hai.
+# Ye file SIRF PAPER / EDUCATIONAL hai. Ise wapas real-trading wali file se mix mat karo.
+REAL_TRADING_PERMANENTLY_DISABLED = True
+# ===== END CLEANED SAFE MODE HEADER =====
+
 # V85 STRONG SIGNAL REBUILD - 19 Nov 2026 - 10am bullish par 3/7 NO TRADE ka fix + Bad Message duplicate fix
 # -*- coding: utf-8 -*-
 # V80 ATTRIBUTEERROR FIX - 18 Nov 2026 - paper_portfolio AttributeError ki jad khatam
@@ -131,10 +146,7 @@ HAS_AUTOREFRESH = False
 # Ab @live_fragment(run_every=X) kuch nahi karega, function normal tarike se chalega jab usko call karenge.
 # Live ke liye ab sirf REFRESH button hai, background race nahi hoga.
 # Agar tujhe live chahiye to 60 sec me ek baar REFRESH daba de, ya auto_alert wala timer use kar (wo bhi ab band hai, neeche dekho)
-def live_fragment(*args, **kwargs):
-    def decorator(func):
-        return func
-    return decorator
+# [CLEANED] Duplicate def 'live_fragment' removed (was lines 134-137) - kept last def at line 4691. Python already used last def, so behaviour unchanged.
 
 
 # IST Definition - No external dependency (stdlib only)
@@ -319,14 +331,16 @@ def save_pending_to_file(pkey, data):
         if _PENDING_FILE_V19.exists():
             try:
                 alld = _json_pending.loads(_PENDING_FILE_V19.read_text(encoding='utf-8'))
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 alld = {}
         safe = _json_pending.loads(_json_pending.dumps(data, default=str))
         alld[pkey] = safe
         _PENDING_FILE_V19.write_text(_json_pending.dumps(alld, default=str), encoding='utf-8')
         try:
             _PENDING_TMP_V19.write_text(_json_pending.dumps(alld, default=str), encoding='utf-8')
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     except Exception as e:
         print(f"save_pending err {e}")
@@ -338,7 +352,8 @@ def load_pending_from_file(pkey):
                 alld = _json_pending.loads(pf.read_text(encoding='utf-8'))
                 if pkey in alld:
                     return alld[pkey]
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 continue
     return None
 
@@ -350,7 +365,8 @@ def delete_pending_from_file(pkey):
                 if pkey in alld:
                     del alld[pkey]
                     pf.write_text(_json_pending.dumps(alld, default=str), encoding='utf-8')
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
 
 _spot_cache_v19 = {}
@@ -364,17 +380,9 @@ from zoneinfo import ZoneInfo
 # 1. Live spot cached 30 sec, 2. Parallel scan, 3. Gemini 2.5-flash fixed
 # All original 3480 lines features retained
 
-def get_spot_cached(symbol): # V14 ULTRA: NO CACHE
-    try:
-        return get_spot(symbol)
-    except:
-        return None
+# [CLEANED] Duplicate def 'get_spot_cached' removed (was lines 367-371) - kept last def at line 5301. Python already used last def, so behaviour unchanged.
 
-def get_chain_cached(symbol, expiry): # V14 ULTRA: NO CACHE
-    try:
-        return get_chain(symbol, expiry)
-    except:
-        return (pd.DataFrame(), pd.DataFrame())
+# [CLEANED] Duplicate def 'get_chain_cached' removed (was lines 373-377) - kept last def at line 5367. Python already used last def, so behaviour unchanged.
 
 # ===== V62 PARALLEL PURE-NETWORK HELPERS - Thread me sirf requests.get, st.* BILKUL NAHI - isliye SessionInfo nahi aayega =====
 # V55.3 ne ThreadPool ko galat samjha tha - Thread me st.session_state / st.cache_data chhune se SessionInfo aata tha, thread se nahi.
@@ -668,7 +676,8 @@ def scan_one_index_fast_v12(symbol, current_expiry, active_tf, vix_data, fii_dii
         if _block_pe_alt:
             ideas = [x for x in ideas if not (x.get("option") == "PE")]
         return ideas
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         return []
 
 # ===== END V12 HEADER =====
@@ -1067,7 +1076,8 @@ def save_persistent_settings(settings_dict):
             try:
                 with open(PERSISTENT_FILE, 'r', encoding='utf-8') as f:
                     existing = json.load(f)
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 existing = {}
         existing.update(settings_dict)
         with open(PERSISTENT_FILE, 'w', encoding='utf-8') as f:
@@ -1076,7 +1086,8 @@ def save_persistent_settings(settings_dict):
         try:
             with open(PERSISTENT_FILE_TMP, 'w', encoding='utf-8') as f:
                 json.dump(existing, f, indent=2)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         return True
     except Exception as e:
@@ -1252,7 +1263,8 @@ try:
         st.sidebar.success(f"💾 Settings Loaded: {ps_count} saved | Page close ke baad bhi rahega | V61: 1 hi tab kholo, 4 tab khologe to session clash hoga")
     else:
         st.sidebar.info("💾 First run - Settings ab save honge, page close ke baad bhi rahenge")
-except:
+except Exception as _clean_e:
+    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
     pass
 
 
@@ -1281,12 +1293,14 @@ def get_telegram_keys():
     try:
         if 'tg_token' in st.session_state and st.session_state['tg_token']:
             bot_token = str(st.session_state['tg_token']).strip()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     try:
         if 'tg_chat' in st.session_state and st.session_state['tg_chat']:
             chat_id = str(st.session_state['tg_chat']).strip()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # 2. Persistent file (page close ke baad bhi)
@@ -1297,7 +1311,8 @@ def get_telegram_keys():
                 bot_token = str(ps.get('tg_token')).strip()
             if not chat_id and ps.get('tg_chat'):
                 chat_id = str(ps.get('tg_chat')).strip()
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     
     # 3. Try loading from file directly
@@ -1314,31 +1329,36 @@ def get_telegram_keys():
                             chat_id = str(data.get('tg_chat')).strip()
                         if bot_token and chat_id:
                             break
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     
     # 4. Secrets fallback
     if not bot_token:
         try:
             bot_token = secret("TELEGRAM_BOT_TOKEN") or ""
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not bot_token:
         try:
             if hasattr(st, 'secrets') and "TELEGRAM_BOT_TOKEN" in st.secrets:
                 bot_token = str(st.secrets["TELEGRAM_BOT_TOKEN"]).strip()
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not chat_id:
         try:
             chat_id = secret("TELEGRAM_CHAT_ID") or ""
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not chat_id:
         try:
             if hasattr(st, 'secrets') and "TELEGRAM_CHAT_ID" in st.secrets:
                 chat_id = str(st.secrets["TELEGRAM_CHAT_ID"]).strip()
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     
     return bot_token.strip(), chat_id.strip()
@@ -1441,7 +1461,8 @@ def send_telegram_message(bot_token, chat_id, message):
         try:
             st.session_state['last_telegram_status'] = f"{r.status_code} - {message[:30]} - {datetime.now(IST).strftime('%H:%M:%S')}"
             st.session_state['last_telegram_response'] = r.text[:200]
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         
         if r.status_code == 200:
@@ -1460,7 +1481,8 @@ def send_telegram_message(bot_token, chat_id, message):
         print(f"Telegram send exception: {e}")
         try:
             st.session_state['last_telegram_status'] = f"ERROR - {str(e)[:50]}"
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         return False, str(e)[:200]
 
@@ -1475,7 +1497,8 @@ def is_market_hours_for_alert():
         market_start = 9 * 60 + 15  # 555 = 9:15 AM
         market_end = 15 * 60 + 30   # 930 = 3:30 PM
         return market_start <= curr_minutes <= market_end, now
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         return True, None
 
 
@@ -1511,7 +1534,8 @@ def send_confirm_call_telegram(idea, live_ltp, spot, expiry_label_str):
                 # Check if this is test dummy
                 if idea.get('confidence', 0) == 85 and idea.get('strike') == 22750:
                     is_test = True
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             
             if not is_test:
@@ -1590,7 +1614,8 @@ Conviction Range: {st.session_state.get('min_conviction',65)}%+ required
                     msg_id = result.get('result', {}).get('message_id')
                     if msg_id:
                         st.session_state[f'tg_msg_id_{pending_key}'] = msg_id
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
                 return True, "OK with buttons"
             else:
@@ -1619,7 +1644,8 @@ def handle_telegram_callback_query():
         params = {"offset": last_update_id + 1, "timeout": 1, "allowed_updates": ["callback_query"]}
         try:
             r = requests.get(url, params=params, timeout=3)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             return False
         if r.status_code != 200:
             return False
@@ -1640,7 +1666,8 @@ def handle_telegram_callback_query():
             try:
                 answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
                 requests.post(answer_url, json={"callback_query_id": callback_id, "text": "Processing..."}, timeout=2)
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             if callback_data.startswith("OPEN_APP_"):
                 try:
@@ -1648,7 +1675,8 @@ def handle_telegram_callback_query():
                     edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
                     txt_app = "App Link: " + str(app_url)
                     requests.post(edit_url, json={"chat_id": chat_id_cb, "message_id": msg_id, "text": txt_app}, timeout=3)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
                 continue
             if callback_data.startswith("YES_BUY_"):
@@ -1659,7 +1687,8 @@ def handle_telegram_callback_query():
                         pdata = load_pending_from_file(pending_key)
                         if pdata:
                             st.session_state[pending_key] = pdata
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                 if not pdata:
                     try:
@@ -1675,23 +1704,25 @@ def handle_telegram_callback_query():
                                         break
                             if pdata:
                                 break
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                 if not pdata:
                     try:
                         edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
                         txt_msg = "EXPIRED Order " + str(pending_key) + " not found. Scan again."
                         requests.post(edit_url, json={"chat_id": chat_id_cb, "message_id": msg_id, "text": txt_msg}, timeout=3)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                     continue
                 idea = pdata.get('idea', {})
                 live_ltp = pdata.get('live_ltp', 0)
                 qty = pdata.get('qty', 1)
                 try:
-                    is_real = st.session_state.get('enable_real_trading', False) or st.session_state.get('auto_real_entry_enabled', False)
+                    is_real = False or False
                     if is_real:
-                        ok, msg = auto_entry_market_price(idea, live_ltp, qty, enable_real=True)
+                        ok, msg = auto_entry_market_price(idea, live_ltp, qty, enable_real=False)
                         exec_type = "REAL"
                     else:
                         try:
@@ -1730,21 +1761,25 @@ def handle_telegram_callback_query():
                             conf = exec_type + " VIA TELEGRAM " + str(idea.get('symbol')) + " " + str(idea.get('strike')) + " Entry Rs " + str(live_ltp)
                             try:
                                 ultra_fast_telegram_send(conf, force=True)
-                            except:
+                            except Exception as _clean_e:
+                                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                 send_telegram_message(bot_token, str(chat_id_cb), conf)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                     try:
                         if pending_key in st.session_state:
                             del st.session_state[pending_key]
                         delete_pending_from_file(pending_key)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                 except Exception as e:
                     try:
                         edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
                         requests.post(edit_url, json={"chat_id": chat_id_cb, "message_id": msg_id, "text": "Error: " + str(e)[:100]}, timeout=3)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
             elif callback_data.startswith("NO_CANCEL_"):
                 pending_key = callback_data.replace("NO_CANCEL_", "")
@@ -1752,13 +1787,15 @@ def handle_telegram_callback_query():
                     if pending_key in st.session_state:
                         del st.session_state[pending_key]
                     delete_pending_from_file(pending_key)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
                 try:
                     edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
                     txt_c = "CANCELLED Order " + str(pending_key)
                     requests.post(edit_url, json={"chat_id": chat_id_cb, "message_id": msg_id, "text": txt_c}, timeout=3)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
         return True
     except Exception as e:
@@ -1809,7 +1846,8 @@ def format_telegram_entry_alert(idea, live_ltp, spot, expiry_label_str):
             sl = live_ltp * (1 - sl_pct)
             t1 = live_ltp * (1 + t1_pct)
             t2 = live_ltp * (1 + t2_pct)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             # Fallback to standard 18%/25%/40% from LIVE
             sl = live_ltp * 0.82
             t1 = live_ltp * 1.25
@@ -1876,7 +1914,8 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
                 bot_token = str(st.secrets["TELEGRAM_BOT_TOKEN"]).strip()
             if not chat_id and "TELEGRAM_CHAT_ID" in st.secrets:
                 chat_id = str(st.secrets["TELEGRAM_CHAT_ID"]).strip()
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         
         if not bot_token or not chat_id:
@@ -1915,7 +1954,8 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
             try:
                 if 'enable_real_trading' in locals() or 'enable_real_trading' in globals():
                     pass
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             
             # V42 WARMUP + V43 CONFIRM CALL
@@ -1926,7 +1966,7 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
                     real_enabled = False
                     print(f"WARMUP: Blocking real entry at {now_w.strftime('%H:%M')} - till 9:30")
                 else:
-                    if st.session_state.get('auto_real_entry_enabled', False):
+                    if False:
                         # V43: Check if confirmation required
                         require_confirm = st.session_state.get('require_confirm_call', True)
                         if require_confirm:
@@ -1949,7 +1989,8 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
                                 }
                                 try:
                                     save_pending_to_file(pending_key, st.session_state[pending_key])
-                                except:
+                                except Exception as _clean_e:
+                                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                     pass
                                 real_enabled = False  # Block auto, wait for confirm
                                 print(f"CONFIRM CALL PENDING: {pending_key} Conv:{conviction_for_confirm}% Warmup:{curr_min_w < 570 if 'curr_min_w' in locals() else 'N/A'}")
@@ -1974,15 +2015,16 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
             except Exception as e:
                 print(f"Warmup/Confirm check error: {e}")
                 try:
-                    if st.session_state.get('auto_real_entry_enabled', False):
+                    if False:
                         real_enabled = True
                         real_qty = st.session_state.get('real_trading_qty_lots', 1)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
             
             if real_enabled and ok:  # Only if telegram sent and real enabled
                 # Auto place real order at market
-                auto_ok, auto_msg = auto_entry_market_price(idea, live_ltp, real_qty, enable_real=True)
+                auto_ok, auto_msg = auto_entry_market_price(idea, live_ltp, real_qty, enable_real=False)
                 if auto_ok:
                     # Send confirmation telegram
                     try:
@@ -1995,7 +2037,8 @@ def auto_send_entry_alert_if_new(idea, live_ltp, spot, expiry_label_str):
 
 ✅ Auto entry at market price!"""
                         send_telegram_message(bot_token, chat_id, confirm_msg)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
         except Exception as e:
             pass
@@ -2042,7 +2085,8 @@ def check_momentum_reversal(pos, current_rsi=60, current_trend="BULLISH"):
                 return True, "PRICE_REVERSAL_AFTER_T1", "HIGH"
         
         return False, "", ""
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         return False, "", ""
 
 def auto_check_emergency_exit_from_lights(light1, light2):
@@ -2075,7 +2119,8 @@ def auto_check_emergency_exit_from_lights(light1, light2):
         try:
             if 'tg_exit_enabled' in st.session_state and not st.session_state['tg_exit_enabled']:
                 return
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         
         # For each position, check if it matches emergency
@@ -2134,9 +2179,10 @@ Light1: {light1.get('status')} | Light2: {light2.get('status')}
                     
                     # V27 ULTRA FAST: AUTO EXIT ALWAYS - Manual Buy + Auto Sell OTM
                     try:
-                        if st.session_state.get('enable_real_trading', False) or st.session_state.get('auto_real_exit', False):
-                            auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                    except:
+                        if False or False:
+                            auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                         
             except Exception as e:
@@ -2173,7 +2219,8 @@ def auto_check_and_exit_positions():
                 pending_keys = [k for k in st.session_state.keys() if k.startswith('pending_confirm_')]
                 for k in pending_keys:
                     del st.session_state[k]
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
         
         # For each position, check live LTP
@@ -2191,7 +2238,8 @@ def auto_check_and_exit_positions():
                     # Try fallback proxy if Angel fails
                     try:
                         live_ltp, live_src, is_ok, _ = get_broker_matched_ltp_FINAL(symbol, strike, opt_type, expiry)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         continue
                     if not is_ok or live_ltp <= 0:
                         continue
@@ -2217,7 +2265,8 @@ def auto_check_and_exit_positions():
                             holding_minutes += 24*60  # overnight
                         if holding_minutes >= 180:  # 3 hours
                             time_exit_reason = f"Time Exit - 3Hr Holding ({holding_minutes}min)"
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
                 
                 # Priority 0: EXTREME MOMENTUM REVERSAL - Full exit without SL (V39 NEW)
@@ -2242,11 +2291,12 @@ def auto_check_and_exit_positions():
                                 rev_reason = f"EXTREME MOMENTUM REVERSAL @ ₹{live_ltp:.2f} - Dropped {drop_pct:.1f}% from high ₹{pos.get('highest_ltp', entry):.2f}"
                     
                     if 'is_extreme' in locals() and is_extreme:
-                        real_exit_enabled = st.session_state.get('auto_real_entry_enabled', False)
+                        real_exit_enabled = False
                         if real_exit_enabled:
                             try:
-                                auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                            except:
+                                auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                            except Exception as _clean_e:
+                                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                 close_paper_position(trade_id, live_ltp, rev_reason)
                         else:
                             close_paper_position(trade_id, live_ltp, rev_reason)
@@ -2257,7 +2307,8 @@ def auto_check_and_exit_positions():
                                 pnl = (live_ltp - entry) * pos.get('qty',0)
                                 msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"{rev_reason} 🚨 EXTREME EXIT FULL SELL @ MARKET | {'🔴 REAL' if real_exit_enabled else 'PAPER'}")
                                 send_telegram_message(bot_token, chat_id, msg)
-                        except:
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             pass
                         continue
                 except Exception as e:
@@ -2266,11 +2317,12 @@ def auto_check_and_exit_positions():
                 
                 # Priority 1: SL hit
                 if live_ltp <= sl:
-                    real_exit_enabled = st.session_state.get('auto_real_entry_enabled', False)
+                    real_exit_enabled = False
                     if real_exit_enabled:
                         try:
-                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                        except:
+                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             close_paper_position(trade_id, live_ltp, f"SL Hit @ ₹{live_ltp:.2f} | REAL EXIT FAILED - PAPER")
                     else:
                         close_paper_position(trade_id, live_ltp, f"SL Hit @ ₹{live_ltp:.2f}")
@@ -2288,11 +2340,12 @@ def auto_check_and_exit_positions():
                 
                 # Priority 2: T2 hit
                 if live_ltp >= t2:
-                    real_exit_enabled = st.session_state.get('auto_real_entry_enabled', False)
+                    real_exit_enabled = False
                     if real_exit_enabled:
                         try:
-                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                        except:
+                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             close_paper_position(trade_id, live_ltp, f"T2 Hit @ ₹{live_ltp:.2f}")
                     else:
                         close_paper_position(trade_id, live_ltp, f"Target 2 Hit @ ₹{live_ltp:.2f} 🎯")
@@ -2303,7 +2356,8 @@ def auto_check_and_exit_positions():
                             pnl = (live_ltp - entry) * pos.get('qty',0)
                             msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"Target 2 Hit @ ₹{live_ltp:.2f} 🎯 | {'🔴 REAL' if real_exit_enabled else 'PAPER'} EXIT @ MARKET")
                             send_telegram_message(bot_token, chat_id, msg)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                     continue
                 
@@ -2348,11 +2402,12 @@ def auto_check_and_exit_positions():
                                 is_rev, rev_type, severity = check_momentum_reversal(pos, current_rsi_est, current_trend_est)
                                 highest = pos.get('highest_ltp', t1_exit_price)
                                 if live_ltp < highest * 0.97 or is_rev:
-                                    real_exit_enabled = st.session_state.get('auto_real_entry_enabled', False)
+                                    real_exit_enabled = False
                                     if real_exit_enabled:
                                         try:
-                                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                                        except:
+                                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                                        except Exception as _clean_e:
+                                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                             close_paper_position(trade_id, live_ltp, f"Momentum Reversal @ ₹{live_ltp:.2f} - 2nd LOT Exit @ T1 ₹{t1_exit_price:.2f}")
                                     else:
                                         close_paper_position(trade_id, live_ltp, f"Momentum Reversal @ ₹{live_ltp:.2f} - 2nd LOT Exit")
@@ -2365,7 +2420,8 @@ def auto_check_and_exit_positions():
                                             pnl = (live_ltp - entry) * pos.get('qty',0)
                                             msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"Momentum Reversal @ ₹{live_ltp:.2f} 🔄 2nd LOT EXIT @ T1 ₹{t1_exit_price:.2f} | {rev_type} | {exit_mode} | {'🔴 REAL' if real_exit_enabled else 'PAPER'} EXIT")
                                             send_telegram_message(bot_token, chat_id, msg)
-                                    except:
+                                    except Exception as _clean_e:
+                                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                         pass
                                     continue
                             pos['highest_ltp'] = max(pos.get('highest_ltp', live_ltp), live_ltp)
@@ -2377,11 +2433,12 @@ def auto_check_and_exit_positions():
 # Priority 4: Time based exit - 15:15 forced or 3hr holding
                 if is_time_exit or time_exit_reason:
                     reason = "15:15 Time Exit - Market Close" if is_time_exit else time_exit_reason
-                    real_exit_enabled = st.session_state.get('auto_real_entry_enabled', False)
+                    real_exit_enabled = False
                     if real_exit_enabled:
                         try:
-                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=True)
-                        except:
+                            auto_ok, auto_msg = auto_exit_market_price(trade_id, pos, live_ltp, enable_real=False)
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             close_paper_position(trade_id, live_ltp, reason)
                     else:
                         close_paper_position(trade_id, live_ltp, reason)
@@ -2392,7 +2449,8 @@ def auto_check_and_exit_positions():
                             pnl = (live_ltp - entry) * pos.get('qty',0)
                             msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"{reason} @ ₹{live_ltp:.2f} ⏰ | {'🔴 REAL' if real_exit_enabled else 'PAPER'} EXIT @ MARKET")
                             send_telegram_message(bot_token, chat_id, msg)
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                     continue
                     
@@ -2415,7 +2473,8 @@ except Exception as e:
 def run_exit_check_in_loop():
     try:
         auto_check_and_exit_positions()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
 
 
@@ -3690,7 +3749,8 @@ def render_high_conviction_ui(setups, overall, math_details, premium):
     """Render the 3 light + math UI - new UI, old UI intact"""
     try:
         render_market_status_banner_v183()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     st.markdown("---")
     st.markdown(f"## 🧮 V18.1 HIGH CONVICTION MATH ENGINE")
@@ -3744,7 +3804,8 @@ def get_nse_option_ltp_ULTRA_FRESH(symbol="NIFTY", strike=22450, opt_type="CE", 
     # Normalize
     try:
         target_exp_norm = expiry_norm(expiry)
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         target_exp_norm = expiry
     
     # Try 3 times with fresh sessions
@@ -3773,7 +3834,8 @@ def get_nse_option_ltp_ULTRA_FRESH(symbol="NIFTY", strike=22450, opt_type="CE", 
             try:
                 sess.get(f"https://www.nseindia.com/?_={ts}", timeout=4)
                 sess.get(f"https://www.nseindia.com/option-chain?_={ts}", timeout=4)
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             
             # Main API with cache buster
@@ -3871,129 +3933,12 @@ def get_broker_matched_ltp_FINAL(symbol, strike, opt_type, selected_expiry):
 
 
 def get_angel_ltp_100pct_broker_match(symbol="NIFTY", strike=22750, opt_type="CE", expiry="27-Oct-2026"):
-    """
-    V37 FIXED: FINNIFTY LTP bug fixed - now correctly fetches FINNIFTY not NIFTY
-    """
+    """[CLEANED SAFE] Angel broker login disabled. No secrets read, no SmartAPI login. Returns 0 so caller falls back to NSE chain LTP."""
     try:
-        api_key = ""; client_id = ""; password = ""; totp_secret = ""
-        for k in ["ANGEL_API_KEY", "API_KEY", "SMARTAPI_KEY"]:
-            if k in st.secrets:
-                api_key = str(st.secrets[k]).strip(); break
-        for k in ["ANGEL_CLIENT_ID", "ANGEL_CLIENT_CODE", "CLIENT_ID", "CLIENT_CODE"]:
-            if k in st.secrets:
-                client_id = str(st.secrets[k]).strip(); break
-        for k in ["ANGEL_PASSWORD", "ANGEL_PIN", "PASSWORD", "PIN"]:
-            if k in st.secrets:
-                password = str(st.secrets[k]).strip(); break
-        for k in ["ANGEL_TOTP_SECRET", "TOTP_SECRET"]:
-            if k in st.secrets:
-                totp_secret = str(st.secrets[k]).strip(); break
-        if not api_key or not client_id:
-            return 0, "ANGEL_KEYS_MISSING", False
-        try:
-            from SmartApi import SmartConnect
-            import pyotp
-            import requests
-            import re
-        except ImportError as e:
-            return 0, f"LIB_MISSING_{str(e)[:20]}", False
-        totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else ""
-        obj = SmartConnect(api_key=api_key)
-        data = obj.generateSession(client_id, password, totp_code)
-        if not (data and data.get("status") == True):
-            return 0, f"ANGEL_LOGIN_FAIL_{str(data)[:40]}", False
-        try:
-            master_url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-            mr = requests.get(master_url, timeout=12)
-            if mr.status_code != 200:
-                return 0, "MASTER_FETCH_FAILED", False
-            instruments = mr.json()
-            symbol = symbol.upper().strip()
-            if symbol == "NIFTY":
-                def is_match(sym):
-                    sym_u = sym.upper()
-                    if "FINNIFTY" in sym_u or "BANKNIFTY" in sym_u or "MIDCPNIFTY" in sym_u or "NIFTYNXT" in sym_u:
-                        return False
-                    return sym_u.startswith("NIFTY") and str(strike) in sym_u and opt_type.upper() in sym_u
-                search_label = "NIFTY"
-            elif symbol == "BANKNIFTY":
-                def is_match(sym):
-                    return "BANKNIFTY" in sym.upper() and str(strike) in sym.upper() and opt_type.upper() in sym.upper()
-                search_label = "BANKNIFTY"
-            elif symbol in ["FINNIFTY", "FIN NIFTY", "FIN"]:
-                def is_match(sym):
-                    sym_u = sym.upper()
-                    return ("FINNIFTY" in sym_u or (sym_u.startswith("FIN") and "NIFTY" in sym_u)) and str(strike) in sym_u and opt_type.upper() in sym_u
-                search_label = "FINNIFTY"
-            elif symbol in ["MIDCPNIFTY", "MIDCAP", "MIDCP"]:
-                def is_match(sym):
-                    return "MIDCPNIFTY" in sym.upper() and str(strike) in sym.upper() and opt_type.upper() in sym.upper()
-                search_label = "MIDCPNIFTY"
-            elif symbol in ["SENSEX", "BSESN"]:
-                def is_match(sym):
-                    return "SENSEX" in sym.upper() and str(strike) in sym.upper() and opt_type.upper() in sym.upper()
-                search_label = "SENSEX"
-            else:
-                def is_match(sym):
-                    return symbol in sym.upper() and str(strike) in sym.upper() and opt_type.upper() in sym.upper()
-                search_label = symbol
-            target_exp_norm = ""
-            try:
-                target_exp_norm = expiry_norm(expiry) if expiry else ""
-                target_exp_dt = datetime.strptime(target_exp_norm, "%Y-%m-%d") if target_exp_norm else None
-            except:
-                target_exp_dt = None
-            candidates = []
-            for inst in instruments:
-                if not isinstance(inst, dict):
-                    continue
-                sym = str(inst.get("symbol", "")).upper()
-                if not is_match(sym):
-                    continue
-                if inst.get("exch_seg") not in ["NFO", "BFO"]:
-                    continue
-                exp_score = 0
-                if target_exp_dt:
-                    try:
-                        m = re.search(r"(\d{2})([A-Z]{3})(\d{2,4})", sym)
-                        if m:
-                            if target_exp_dt.strftime("%b").upper() in sym:
-                                exp_score += 10
-                            if str(target_exp_dt.day) in sym:
-                                exp_score += 5
-                            if str(target_exp_dt.year)[-2:] in sym or str(target_exp_dt.year) in sym:
-                                exp_score += 3
-                    except:
-                        pass
-                else:
-                    exp_score = 1
-                candidates.append((exp_score, inst))
-            candidates.sort(key=lambda x: x[0], reverse=True)
-            for score, inst in candidates[:10]:
-                sym = inst.get("symbol", ""); token = str(inst.get("token", "")); exch = inst.get("exch_seg", "NFO")
-                try:
-                    ltp_data = obj.ltpData(exch, sym, token)
-                    if ltp_data and ltp_data.get("status") == True:
-                        ltp_val = ltp_data.get("data", {}).get("ltp")
-                        if ltp_val and float(ltp_val) > 0:
-                            return float(ltp_val), f"ANGEL_BROKER_MATCHED_{search_label}{expiry.replace('-','').upper() if expiry else ''}{strike}{opt_type.upper()}_{ltp_val}", True
-                except:
-                    continue
-            for score, inst in candidates[:20]:
-                sym = inst.get("symbol", ""); token = str(inst.get("token", "")); exch = inst.get("exch_seg", "NFO")
-                try:
-                    ltp_data = obj.ltpData(exch, sym, token)
-                    if ltp_data and ltp_data.get("status") == True:
-                        ltp_val = ltp_data.get("data", {}).get("ltp")
-                        if ltp_val and float(ltp_val) > 0:
-                            return float(ltp_val), f"ANGEL_BROKER_MATCHED_{search_label}_FALLBACK_{strike}{opt_type}_{ltp_val}", True
-                except:
-                    continue
-            return 0, f"NO_LTP_FOUND_{search_label}_{strike}{opt_type}", False
-        except Exception as e:
-            return 0, f"ANGEL_SEARCH_ERROR_{str(e)[:50]}", False
-    except Exception as e:
-        return 0, f"ANGEL_ERROR_{str(e)[:50]}", False
+        logging.warning("[SAFE] get_angel_ltp_100pct_broker_match blocked - Angel login disabled, using NSE fallback")
+    except Exception:
+        pass
+    return 0, "ANGEL_DISABLED_SAFE_MODE", False
 
 
 def get_live_premium_V20_FINAL(symbol, strike, opt_type, expiry):
@@ -4015,7 +3960,8 @@ def get_live_premium_V20_FINAL(symbol, strike, opt_type, expiry):
         ltp3, src3, ok3 = get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol, strike, opt_type, expiry)
         if ok3 and ltp3 > 0:
             return ltp3, src3, True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # All failed - return 0 with clear message
@@ -4053,7 +3999,8 @@ def get_nse_ltp_V19_PROXY_BYPASS(symbol="NIFTY", strike=22750, opt_type="CE", ex
             if r.status_code == 200:
                 try:
                     data = r.json()
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     # allorigins may return text
                     data = json.loads(r.text)
                 
@@ -4088,7 +4035,8 @@ def get_nse_ltp_V19_PROXY_BYPASS(symbol="NIFTY", strike=22750, opt_type="CE", ex
                     ltp = item.get(target_type, {}).get("lastPrice", 0)
                     if ltp:
                         return float(ltp), f"NSE_DIRECT_{ltp}", True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     return 0, "PROXY_ALL_FAILED", False
@@ -4102,7 +4050,8 @@ def get_live_premium_V19_FINAL(symbol, strike, opt_type, expiry):
         ltp2, src2, ok2 = get_live_premium_V18_FINAL(symbol, strike, opt_type, expiry)
         if ok2 and ltp2 > 0:
             return ltp2, src2, True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     return 0, "V19_PROXY_FAILED_ADD_ANGEL", False
 
@@ -4120,7 +4069,8 @@ def get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol="NIFTY", strike=22750, opt_type="CE"
     try:
         exp_norm = expiry_norm(expiry)
         exp_day = exp_norm.split("-")[2] if "-" in exp_norm else ""
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         exp_norm = expiry
         exp_day = ""
     
@@ -4144,7 +4094,8 @@ def get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol="NIFTY", strike=22750, opt_type="CE"
                     ltp = od.get("lastPrice", 0)
                     if ltp and float(ltp) > 0:
                         return float(ltp), f"NSE_DIRECT_{ltp}", True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # === SOURCE 2: NiftyTrader API (NOT blocked on Cloud, same as broker) ===
@@ -4169,7 +4120,8 @@ def get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol="NIFTY", strike=22750, opt_type="CE"
                                         ltp = od.get("lastPrice") or od.get("ltp") or od.get("last_price")
                                         if ltp and float(ltp) > 0:
                                             return float(ltp), f"NIFTYTRADER_{ltp}", True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # === SOURCE 3: NSE Quote Derivative Single Strike (less blocked) ===
@@ -4178,7 +4130,8 @@ def get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol="NIFTY", strike=22750, opt_type="CE"
         # Expiry format for identifier: DD-MM-YYYY
         try:
             exp_date = datetime.strptime(exp_norm, "%Y-%m-%d").strftime("%d-%m-%Y")
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             exp_date = "27-10-2026"
         identifier = f"OPTIDXNIFTY{exp_date}{target_type}{target_strike}.00"
         url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol.upper()}&identifier={identifier}"
@@ -4195,17 +4148,19 @@ def get_nse_ltp_ULTIMATE_CLOUD_PROOF(symbol="NIFTY", strike=22750, opt_type="CE"
             ltp = data.get("lastPrice") or data.get("marketDeptOrderBook", {}).get("lastPrice")
             if ltp and float(ltp) > 0:
                 return float(ltp), f"NSE_QUOTE_{ltp}", True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # === SOURCE 4: Angel One (if keys present, 100% broker matched) ===
     try:
-        api_key = secret("ANGEL_API_KEY") or secret("ANGEL_API_KEY".lower())
+        api_key = ""  # CLEANED SAFE: Angel secret never read
         if api_key:
             # If Angel keys present, use their LTP API (would need SmartAPI)
             # For now, skip but log
             pass
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # All failed - return 0 with clear message
@@ -4229,7 +4184,8 @@ def get_live_premium_V18_FINAL(symbol, strike, opt_type, expiry):
         ltp2, src2, ok2, _ = get_nse_option_ltp_ULTRA_FRESH(symbol, strike, opt_type, expiry)
         if ok2 and ltp2 > 0:
             return ltp2, src2, True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # Fallback to broker matched
@@ -4237,18 +4193,14 @@ def get_live_premium_V18_FINAL(symbol, strike, opt_type, expiry):
         ltp3, src3, ok3, _ = get_broker_matched_ltp_FINAL(symbol, strike, opt_type, expiry)
         if ok3 and ltp3 > 0:
             return ltp3, src3, True
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     return 0, "CLOUD_BLOCKED_ADD_ANGEL_KEY_FOR_108.20", False
 
 
-def get_live_premium_exact_NO_CACHE_OLD(symbol, strike, opt_type, expiry): # Deprecated
-    """Wrapper now calls ULTRA fetcher"""
-    ltp, src, ok, exp_found = get_nse_option_ltp_ULTRA_FRESH(symbol, strike, opt_type, expiry)
-    if ok and ltp > 0:
-        return ltp, src, True
-    return 0, src, False
+# [CLEANED] Duplicate def 'get_live_premium_exact_NO_CACHE_OLD' removed (was lines 4246-4251) - kept last def at line 4303. Python already used last def, so behaviour unchanged.
 
 # ========== END V14 ULTRA FETCHER ==========
 
@@ -4420,7 +4372,8 @@ def get_market_status_v184():
             # If NSE says holiday via API, respect it
             if today in NSE_TRADING_HOLIDAYS:
                 return False, f"🔴 NSE Holiday - {today.strftime('%d %b %Y')}", "HOLIDAY", None
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         return True, f"🟢 Market OPEN - LIVE | {now.strftime('%H:%M:%S IST')} | Today: {today.strftime('%d %b %Y')}", "OPEN", None
 
@@ -4458,9 +4411,7 @@ def render_market_status_banner_v184():
 
 # Override old banner
 
-def is_market_open_v183():
-    is_open, _, status_type, _ = get_market_status_v184()
-    return is_open, status_type
+# [CLEANED] Duplicate def 'is_market_open_v183' removed (was lines 4461-4463) - kept last def at line 4468. Python already used last def, so behaviour unchanged.
 
 # ================= V18.3 WEEKEND FIX (REPLACED) - Market Status Aware =================
 from datetime import datetime as dt_v183, timedelta as td_v183
@@ -4536,9 +4487,11 @@ with st.sidebar.expander("📱 Telegram EMERGENCY EXIT Alert", expanded=False):
         try:
             save_persistent_settings({'tg_token': tg_token, 'tg_chat': tg_chat, 'tg_enabled': tg_enabled, 'tg_entry_enabled': tg_entry_enabled, 'tg_exit_enabled': tg_exit_enabled})
             st.session_state['persistent_settings'].update({'tg_token': tg_token, 'tg_chat': tg_chat, 'tg_enabled': tg_enabled, 'tg_entry_enabled': tg_entry_enabled, 'tg_exit_enabled': tg_exit_enabled})
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     if st.button("Test Telegram Alert", key="tg_test"):
@@ -5005,17 +4958,25 @@ if not _v59_ss_contains("paper_portfolio"):
         "circuit_broken": False,
     })
 def _v80_get_portfolio():
-    # V87: Sirf safe helper - direct st.session_state.get/set HATAYA. Safe helper khud main-thread check + fallback karta hai.
+    # [CLEANED] Fixed: return the STORED object, not dict(_def80) copy.
     _def80 = {"cash_balance": 500000.0, "starting_balance": 500000.0, "daily_realized_pnl": 0.0, "positions": {}, "trade_history": [], "session_date": datetime.now(IST).date().isoformat(), "daily_loss_limit": 10000.0, "circuit_broken": False}
     try:
         _pp80 = _v59_ss_get("paper_portfolio", None)
         if isinstance(_pp80, dict) and "positions" in _pp80:
             return _pp80
-    except Exception:
-        pass
-    try: _v59_ss_set("paper_portfolio", dict(_def80))
-    except Exception: pass
-    return dict(_def80)
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] _v80_get_portfolio read failed: {_clean_e}")
+    try:
+        _v59_ss_set("paper_portfolio", _def80)
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] _v80_get_portfolio save failed: {_clean_e}")
+    try:
+        _stored = _v59_ss_get("paper_portfolio", None)
+        if isinstance(_stored, dict) and "positions" in _stored:
+            return _stored
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] _v80_get_portfolio re-read failed: {_clean_e}")
+    return _def80
 def _v80_set_portfolio_field(_k80, _v80):
     # V87: Sirf safe helper - direct write hataya
     try:
@@ -5135,9 +5096,11 @@ def _v21_yahoo(symbol):
                     p=j['chart']['result'][0]['meta']['regularMarketPrice']
                     if p and float(p)>0:
                         return float(p)
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 continue
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     return None
 
@@ -5164,130 +5127,18 @@ def _v21_proxy_spot(symbol):
                             fv=float(it.get("last"))
                             if fv>0:
                                 return fv
-                        except:
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             pass
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     return None
 
 # Override fetch_verified_spot with turbo version
-def fetch_verified_spot(symbol: str):
-    now_str=datetime.now(IST).strftime("%H:%M:%S IST")
-    try:
-        ck=f"_spot_{symbol}"
-        if ck in _spot_cache_v19:
-            val,ts=_spot_cache_v19[ck]
-            import time as _tt
-            if _tt.time()-ts<2 and val and val>0:
-                return {"price":val,"change":0.0,"p_change":0.0,"source":"CACHE","status":"CACHED","timestamp":now_str}
-    except:
-        pass
-    yp=_v21_yahoo(symbol)
-    if yp and yp>0:
-        try:
-            _spot_cache_v19[f"_spot_{symbol}"]=(yp,time.time())
-        except:
-            pass
-        return {"price":yp,"change":0.0,"p_change":0.0,"source":"YAHOO","status":"LIVE_YAHOO","timestamp":now_str}
-    pp=_v21_proxy_spot(symbol)
-    if pp and pp>0:
-        try:
-            _spot_cache_v19[f"_spot_{symbol}"]=(pp,time.time())
-        except:
-            pass
-        return {"price":pp,"change":0.0,"p_change":0.0,"source":"PROXY","status":"LIVE_PROXY","timestamp":now_str}
-    for _ in range(2):
-        try:
-            import requests as _rq
-            sess=_rq.Session()
-            sess.headers.update({"User-Agent":_rand_v21.choice(_V21_UAS),"Referer":"https://www.nseindia.com/option-chain"})
-            try:
-                sess.get("https://www.nseindia.com", timeout=3)
-            except:
-                pass
-            ts=int(time.time()*1000)
-            url=f"https://www.nseindia.com/api/allIndices?_={ts}"
-            r=sess.get(url, timeout=5)
-            if r.status_code==200:
-                data=r.json()
-                if "data" in data:
-                    if symbol=="BANKNIFTY":
-                        chk="NIFTY BANK"
-                    elif symbol=="NIFTY":
-                        chk="NIFTY 50"
-                    elif symbol=="INDIA_VIX":
-                        chk="INDIA VIX"
-                    else:
-                        chk=symbol
-                    for it in data["data"]:
-                        if str(it.get("indexSymbol","")).upper()==chk or str(it.get("index","")).upper()==chk:
-                            try:
-                                fv=float(it.get("last"))
-                                if fv>0:
-                                    try:
-                                        _spot_cache_v19[f"_spot_{symbol}"]=(fv,time.time())
-                                    except:
-                                        pass
-                                    return {"price":fv,"change":float(it.get("variation",0)),"p_change":float(it.get("percentChange",0)),"source":"NSE","status":"LIVE_NSE","timestamp":now_str}
-                            except:
-                                pass
-        except:
-            time.sleep(0.2)
-            continue
-    try:
-        ck=f"_spot_{symbol}"
-        if ck in _spot_cache_v19:
-            val,_=_spot_cache_v19[ck]
-            if val and val>0:
-                return {"price":val,"change":0.0,"p_change":0.0,"source":"STALE","status":"STALE","timestamp":now_str}
-    except:
-        pass
-    return {"price":None,"change":0.0,"p_change":0.0,"source":"FAILED","status":"FAILED","timestamp":now_str}
+# [CLEANED] Duplicate def 'fetch_verified_spot' removed (was lines 5174-5245) - kept last def at line 7366. Python already used last def, so behaviour unchanged.
 
-def get_spot(symbol: str):
-    # V55.6 SPOT FIX - VIX ki tarah Spot bhi kabhi None nahi bhejega
-    # Pehle: Yahoo + Proxy + NSE sab fail hote the (Cloud IP block) to None aata tha -> Syncing... forever
-    # Ab: Last cached value (chahe 2 ghante purana ho) wapas bhejega, taaki market band hone pe bhi Last Close dikhe, Syncing nahi
-    try:
-        res = fetch_verified_spot(symbol)
-        p = res.get("price") if isinstance(res, dict) else None
-        if p and p > 0:
-            return float(p)
-        # Cache fallback - age ki parwah nahi, last value hi dikhao (market closed me yehi Last Close hai)
-        try:
-            ck = f"_spot_{symbol}"
-            if ck in _spot_cache_v19:
-                val, ts = _spot_cache_v19[ck]
-                if val and val > 0:
-                    return float(val)
-        except:
-            pass
-        # Yahoo direct dobara
-        try:
-            y = _v21_yahoo(symbol)
-            if y and y > 0:
-                return float(y)
-        except:
-            pass
-        # Proxy dobara
-        try:
-            _pp = _v21_proxy_spot(symbol)
-            if _pp and _pp > 0:
-                return float(_pp)
-        except:
-            pass
-        return p
-    except:
-        # Exception me bhi cache try karo
-        try:
-            ck = f"_spot_{symbol}"
-            if ck in _spot_cache_v19:
-                val, _ts = _spot_cache_v19[ck]
-                if val and val > 0:
-                    return float(val)
-        except:
-            pass
-        return None
+# [CLEANED] Duplicate def 'get_spot' removed (was lines 5247-5290) - kept last def at line 7448. Python already used last def, so behaviour unchanged.
 
 def get_spot_safe_for_display(symbol: str):
     try:
@@ -5295,97 +5146,19 @@ def get_spot_safe_for_display(symbol: str):
         if p and p > 0:
             return float(p)
         return 0.0
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         return 0.0
 
 def get_spot_cached(symbol):
     return get_spot(symbol)
 
-def get_chain(symbol: str, expiry):
-    try:
-        url=f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol.upper()}"
-        raw=nse_client.get_json(url)
-        if raw and isinstance(raw, dict):
-            rec=raw.get("records",{})
-            items=rec.get("data",[])
-            if items:
-                import pandas as pd
-                rows=[]
-                sync_tag=datetime.now(IST).strftime("%H:%M:%S")
-                for item in items:
-                    strike=item.get("strikePrice")
-                    try:
-                        sf=float(strike)
-                    except:
-                        continue
-                    if "CE" in item and isinstance(item["CE"], dict):
-                        ce=item["CE"]
-                        rows.append({"strikePrice":sf,"option_type":"CE","lastPrice":float(ce.get("lastPrice",0) or 0),"openInterest":int(ce.get("openInterest",0) or 0),"changeinOpenInterest":int(ce.get("changeinOpenInterest",0) or 0),"change":float(ce.get("change",0) or 0),"impliedVolatility":float(ce.get("impliedVolatility",0) or 0),"bidQty":0,"bidprice":0,"askQty":0,"askPrice":0,"lastUpdateTime":sync_tag,"expiryDate":item.get("expiryDate",expiry),"price_source":"NSE_LIVE"})
-                    if "PE" in item and isinstance(item["PE"], dict):
-                        pe=item["PE"]
-                        rows.append({"strikePrice":sf,"option_type":"PE","lastPrice":float(pe.get("lastPrice",0) or 0),"openInterest":int(pe.get("openInterest",0) or 0),"changeinOpenInterest":int(pe.get("changeinOpenInterest",0) or 0),"change":float(pe.get("change",0) or 0),"impliedVolatility":float(pe.get("impliedVolatility",0) or 0),"bidQty":0,"bidprice":0,"askQty":0,"askPrice":0,"lastUpdateTime":sync_tag,"expiryDate":item.get("expiryDate",expiry),"price_source":"NSE_LIVE"})
-                if rows:
-                    import pandas as pd
-                    df=pd.DataFrame(rows)
-                    return df, df.copy()
-    except:
-        pass
-    try:
-        import requests as _rq, json as _js, urllib.parse as _up
-        chain_url=f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol.upper()}"
-        proxy_url=f"https://api.allorigins.win/raw?url={_up.quote(chain_url, safe='')}"
-        r=_rq.get(proxy_url, timeout=8, headers={"User-Agent":_rand_v21.choice(_V21_UAS)})
-        if r.status_code==200:
-            data=_js.loads(r.text)
-            if isinstance(data, dict) and "records" in data:
-                rec=data.get("records",{})
-                items=rec.get("data",[])
-                rows=[]
-                sync_tag=datetime.now(IST).strftime("%H:%M:%S")
-                for item in items:
-                    strike=item.get("strikePrice")
-                    try:
-                        sf=float(strike)
-                    except:
-                        continue
-                    if "CE" in item and isinstance(item["CE"], dict):
-                        ce=item["CE"]
-                        rows.append({"strikePrice":sf,"option_type":"CE","lastPrice":float(ce.get("lastPrice",0) or 0),"openInterest":int(ce.get("openInterest",0) or 0),"changeinOpenInterest":int(ce.get("changeinOpenInterest",0) or 0),"change":float(ce.get("change",0) or 0),"impliedVolatility":float(ce.get("impliedVolatility",0) or 0),"bidQty":0,"bidprice":0,"askQty":0,"askPrice":0,"lastUpdateTime":sync_tag,"expiryDate":item.get("expiryDate",expiry),"price_source":"PROXY"})
-                    if "PE" in item and isinstance(item["PE"], dict):
-                        pe=item["PE"]
-                        rows.append({"strikePrice":sf,"option_type":"PE","lastPrice":float(pe.get("lastPrice",0) or 0),"openInterest":int(pe.get("openInterest",0) or 0),"changeinOpenInterest":int(pe.get("changeinOpenInterest",0) or 0),"change":float(pe.get("change",0) or 0),"impliedVolatility":float(pe.get("impliedVolatility",0) or 0),"bidQty":0,"bidprice":0,"askQty":0,"askPrice":0,"lastUpdateTime":sync_tag,"expiryDate":item.get("expiryDate",expiry),"price_source":"PROXY"})
-                if rows:
-                    import pandas as pd
-                    df=pd.DataFrame(rows)
-                    return df, df.copy()
-    except:
-        pass
-    import pandas as pd
-    empty=pd.DataFrame()
-    return empty, empty.copy()
+# [CLEANED] Duplicate def 'get_chain' removed (was lines 5304-5365) - kept last def at line 7755. Python already used last def, so behaviour unchanged.
 
 def get_chain_cached(symbol, expiry):
     return get_chain(symbol, expiry)
 
-def get_india_vix():
-    try:
-        vix_data=fetch_verified_spot("INDIA_VIX")
-        vix=vix_data.get("price")
-        if vix is None or vix<=0:
-            vix=_v21_yahoo("INDIA_VIX")
-            if not vix:
-                vix=13.5
-        regime="NORMAL"
-        if vix:
-            if vix<12:
-                regime="LOW_VOL"
-            elif vix>20:
-                regime="HIGH_VOL"
-            elif vix>16:
-                regime="ELEVATED"
-        return {"vix":vix,"regime":regime,"source":"V21_TURBO","timestamp":datetime.now(IST).strftime("%H:%M:%S IST")}
-    except:
-        return {"vix":13.5,"regime":"NORMAL","source":"FALLBACK","timestamp":datetime.now(IST).strftime("%H:%M:%S IST")}
+# [CLEANED] Duplicate def 'get_india_vix' removed (was lines 5370-5388) - kept last def at line 7468. Python already used last def, so behaviour unchanged.
 # ===== END V21 TURBO =====
 
 # ===== V22 ULTRA FAST TELEGRAM & MARKET RESPONSE =====
@@ -5407,7 +5180,8 @@ def _v22_get_bot_cached():
             _telegram_bot_cache_v22["chat"] = c
             _telegram_bot_cache_v22["time"] = now
             return t, c
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     return None, None
 
@@ -5498,32 +5272,20 @@ def secret(name: str) -> str:
 
 # V21 DEBUG: Show Angel key status in sidebar for debugging
 def show_angel_debug_status():
+    """[CLEANED SAFE] Angel debug disabled - never reads broker secrets."""
     try:
         with st.sidebar:
-            st.divider()
-            st.caption("🔍 V21 Angel Debug Status")
-            keys_to_check = ["ANGEL_API_KEY", "ANGEL_CLIENT_ID", "ANGEL_PASSWORD", "ANGEL_TOTP_SECRET"]
-            for k in keys_to_check:
-                v = secret(k)
-                if v:
-                    st.success(f"✅ {k}: Found ({len(v)} chars)")
-                else:
-                    st.error(f"❌ {k}: Missing")
-            # Show all secret keys (names only, not values)
-            try:
-                all_keys = list(st.secrets.keys())
-                st.caption(f"All secrets keys: {all_keys}")
-            except:
-                st.caption("No secrets found at all")
-    except:
-        pass
+            st.caption("SAFE MODE: Angel disabled - Paper only")
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] show_angel_debug_status: {_clean_e}")
 
 
-ANGEL_API_KEY = secret("ANGEL_API_KEY")
-ANGEL_CLIENT_CODE = secret("ANGEL_CLIENT_CODE")
-ANGEL_PIN = secret("ANGEL_PIN")
-ANGEL_TOTP_SECRET = secret("ANGEL_TOTP_SECRET")
-ANGEL_JWT_TOKEN = secret("ANGEL_JWT_TOKEN")
+# [CLEANED SAFE] Angel keys NEVER read in SAFE mode - no broker login via telemetry either.
+ANGEL_API_KEY = ""
+ANGEL_CLIENT_CODE = ""
+ANGEL_PIN = ""
+ANGEL_TOTP_SECRET = ""
+ANGEL_JWT_TOKEN = ""  # CLEANED SAFE: was secret("ANGEL_JWT_TOKEN")
 GEMINI_API_KEY = secret("GEMINI_API_KEY") or secret("GOOGLE_API_KEY")
 GEMINI_MODEL = secret("GEMINI_MODEL") or "gemini-2.5-flash"
 
@@ -5539,18 +5301,8 @@ except Exception:
 
 @_v59_singleton  # V59: @st.cache_resource HATAYA - plain singleton, SessionInfo nahi maangega
 def create_telemetry():
-    if TelemetryEngine is None or not all([ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP_SECRET]):
-        return None
-    try:
-        return TelemetryEngine(
-            api_key=ANGEL_API_KEY,
-            client_code=ANGEL_CLIENT_CODE,
-            pin=ANGEL_PIN,
-            totp_secret=ANGEL_TOTP_SECRET,
-        )
-    except Exception as e:
-        logger.error("TelemetryEngine init failed: %s", e)
-        return None
+    """[CLEANED SAFE] Telemetry disabled - would login to Angel, so always None."""
+    return None
 
 telemetry = create_telemetry()
 
@@ -7159,7 +6911,8 @@ class GlobalMacroEngine:
                     if price and price > 0:
                         pct = ((price - prev) / prev) * 100 if prev > 0 else 0.0
                         return price, pct
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 continue
         return None, None
     def _fetch_stooq_one(self, stooq_sym: str):
@@ -7179,7 +6932,8 @@ class GlobalMacroEngine:
                         if last and last > 0:
                             pct = ((last - prev) / prev) * 100 if prev > 0 else 0.0
                             return last, pct
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         return None, None
     def _verify_multi(self, ysym: str, stooq_sym: str):
@@ -7218,21 +6972,24 @@ class GlobalMacroEngine:
             _p, _pct, _src = self._verify_multi("^NDX", "ndx")
             if _p and _p > 0:
                 out["NASDAQ"] = {"symbol": "Nasdaq 100", "price": _p, "change_pct": _pct, "status": "GREEN" if _pct >= 0.25 else ("RED" if _pct <= -0.25 else "YELLOW"), "source": _src}
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         # BRENT - BZ=F Yahoo + Stooq brz
         try:
             _p, _pct, _src = self._verify_multi("BZ=F", "brz")
             if _p and _p > 0:
                 out["CRUDE_OIL"] = {"symbol": "Brent Crude Oil", "price": _p, "change_pct": _pct, "status": "RED" if _pct >= 1.0 else ("GREEN" if _pct <= -1.0 else "YELLOW"), "source": _src}
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         # GOLD - V55.9 NEW: Pehle kabhi fetch hi nahi hota tha, sirf Active likha tha. Ab GC=F + Stooq xauusd se aayega
         try:
             _p, _pct, _src = self._verify_multi("GC=F", "xauusd")
             if _p and _p > 0:
                 out["GOLD"] = {"symbol": "Gold (COMEX)", "price": _p, "change_pct": _pct, "status": "GREEN" if _pct >= 0.25 else ("RED" if _pct <= -0.25 else "YELLOW"), "source": _src}
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         # GIFT NIFTY - V55.10 FIX: Pehle NIFTY ke 5-day % ko Gift ka % bana diya tha, isliye +3.11% dikha jabki asli -0.01% tha
         # Ab Gift ka apna Prev Close (NSE IX se) se 1-day % nikalenge. User ke screenshot me Prev Close 25,301 tha, price 25,298.50 = -0.01%
@@ -7260,9 +7017,11 @@ class GlobalMacroEngine:
                                 if _gift_prev and _gift_prev > 0:
                                     _gift_pct = ((_gift_price - _gift_prev) / _gift_prev) * 100
                                 break
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         continue
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             if not _gift_price:
                 # Fallback - Yahoo NIFTY ^NSEI se approx, par ab 2d range se 1-day % aayega, 5-day nahi
@@ -7271,11 +7030,13 @@ class GlobalMacroEngine:
                     if _np and _np > 0:
                         _gift_price = float(_np) + 25.0
                         _gift_pct = _npct  # Ab ye 1-day % hai (range=2d fix ki wajah se)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
             if _gift_price and _gift_price > 0:
                 out["GIFT_NIFTY"] = {"symbol": "Gift Nifty", "price": _gift_price, "change_pct": _gift_pct, "status": "GREEN" if _gift_pct >= 0.1 else ("RED" if _gift_pct <= -0.1 else "NEUTRAL"), "source": "NSE_IX_PROXY"}
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         return out
 
@@ -7453,13 +7214,15 @@ def get_spot(symbol: str) -> Optional[float]:
             val, ts = _spot_cache_v19[ck]
             if _tt.time() - ts < 1.5 and val:
                 return val
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     res = fetch_verified_spot(symbol)
     price = res.get("price")
     try:
         _spot_cache_v19[ck] = (price, _tt.time())
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     return price
 
@@ -7474,7 +7237,8 @@ def get_india_vix() -> Dict[str, Any]:
         vix = vix_quote.get("price") if isinstance(vix_quote, dict) else None
         if vix and vix > 0:
             _src = vix_quote.get("source", "LIVE") if isinstance(vix_quote, dict) else "LIVE"
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         vix = None
     if not vix or vix <= 0:
         try:
@@ -7482,7 +7246,8 @@ def get_india_vix() -> Dict[str, Any]:
             if _yv and _yv > 0:
                 vix = float(_yv)
                 _src = "YAHOO_DIRECT"
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not vix or vix <= 0:
         try:
@@ -7490,7 +7255,8 @@ def get_india_vix() -> Dict[str, Any]:
             if _pv and _pv > 0:
                 vix = float(_pv)
                 _src = "NSE_PROXY"
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not vix or vix <= 0:
         try:
@@ -7500,7 +7266,8 @@ def get_india_vix() -> Dict[str, Any]:
                 if _val and _val > 0:
                     vix = float(_val)
                     _src = "CACHED_LAST"
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if not vix or vix <= 0:
         vix = 13.5
@@ -7508,7 +7275,8 @@ def get_india_vix() -> Dict[str, Any]:
     else:
         try:
             _spot_cache_v19["_spot_INDIA_VIX"] = (float(vix), time.time())
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     if vix < 12.0: regime, sl_mult = "LOW VOLATILITY", 0.88
     elif 12.0 <= vix <= 18.0: regime, sl_mult = "OPTIMAL BUYING", 0.85
@@ -8163,7 +7931,8 @@ def fetch_ohlcv(symbol: str, interval: str = "FIVE_MINUTE", days: int = 5) -> pd
                 _r = requests.get(url, timeout=2.5, headers={"User-Agent": "Mozilla/5.0"})
                 if _r.ok:
                     resp = _r
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
             if resp.ok:
                 data = resp.json()["chart"]["result"][0]
@@ -8774,158 +8543,20 @@ def evaluate_risk_gates(symbol: str, proposed_qty: int, trade_risk: float, is_eq
 # ===== V33 REAL AUTO TRADING WITH ANGEL ONE - Direct Broker Execution =====
 
 def place_angel_real_order(symbol, strike, opt_type, expiry, quantity, order_type="BUY", price=0):
-    """
-    Place REAL order on Angel One via SmartAPI
-    WARNING: This places REAL money order!
-    """
+    """[CLEANED SAFE] Real trading permanently disabled. Never reads broker secrets, never logs in, never places order."""
     try:
-        # Get secrets
-        api_key = ""
-        client_id = ""
-        password = ""
-        totp_secret = ""
-        
-        for k in ["ANGEL_API_KEY", "API_KEY"]:
-            if k in st.secrets:
-                api_key = str(st.secrets[k]).strip()
-                break
-        for k in ["ANGEL_CLIENT_ID", "ANGEL_CLIENT_CODE", "CLIENT_ID"]:
-            if k in st.secrets:
-                client_id = str(st.secrets[k]).strip()
-                break
-        for k in ["ANGEL_PASSWORD", "ANGEL_PIN", "PASSWORD"]:
-            if k in st.secrets:
-                password = str(st.secrets[k]).strip()
-                break
-        for k in ["ANGEL_TOTP_SECRET", "TOTP_SECRET"]:
-            if k in st.secrets:
-                totp_secret = str(st.secrets[k]).strip()
-                break
-        
-        if not api_key or not client_id:
-            return False, "Angel keys missing", None
-        
-        try:
-            from SmartApi import SmartConnect
-            import pyotp
-            import requests
-        except ImportError:
-            return False, "smartapi-python not installed", None
-        
-        # Login
-        totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else ""
-        obj = SmartConnect(api_key=api_key)
-        data = obj.generateSession(client_id, password, totp_code)
-        
-        if not (data and data.get("status") == True):
-            return False, f"Login failed: {data}", None
-        
-        # Find instrument token for order
-        master_url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        mr = requests.get(master_url, timeout=12)
-        if mr.status_code != 200:
-            return False, "Master fetch failed", None
-        
-        instruments = mr.json()
-        target_token = None
-        target_symbol = None
-        trading_symbol = None
-        
-        for inst in instruments:
-            if not isinstance(inst, dict):
-                continue
-            sym = str(inst.get("symbol", "")).upper()
-            if str(strike) in sym and opt_type.upper() in sym and "NIFTY" in sym:
-                # Match expiry if possible
-                if sym.endswith(f"{strike}{opt_type.upper()}") or f"{strike}{opt_type.upper()}" in sym:
-                    target_token = str(inst.get("token", ""))
-                    target_symbol = sym
-                    trading_symbol = inst.get("symbol", "")
-                    # Prefer exact expiry match if provided
-                    if expiry and expiry.replace("-","").upper()[:3] in sym:
-                        break
-        
-        if not target_token:
-            return False, f"Token not found for {symbol} {strike} {opt_type}", None
-        
-        # Place order via SmartAPI
-        try:
-            # Angel placeOrder params
-            order_params = {
-                "variety": "NORMAL",
-                "tradingsymbol": trading_symbol,
-                "symboltoken": target_token,
-                "transactiontype": order_type.upper(),  # BUY or SELL
-                "exchange": "NFO",
-                "ordertype": "MARKET" if price == 0 else "LIMIT",
-                "producttype": "CARRYFORWARD",  # For options
-                "duration": "DAY",
-                "price": str(price) if price > 0 else "0",
-                "squareoff": "0",
-                "stoploss": "0",
-                "quantity": str(quantity)
-            }
-            
-            order_id = obj.placeOrder(order_params)
-            return True, f"Order placed: {order_id} for {trading_symbol} @ {price}", order_id
-            
-        except Exception as e:
-            return False, f"Place order failed: {str(e)[:100]}", None
-            
-    except Exception as e:
-        return False, f"Real order error: {str(e)[:100]}", None
+        logging.warning("[SAFE] place_angel_real_order blocked - real trading disabled, paper only")
+    except Exception:
+        pass
+    return False, "Real trading disabled in SAFE mode - paper only", None
 
 def execute_real_trade_with_confirmation(idea, live_ltp, quantity, enable_real=False):
-    """Execute real trade with double confirmation"""
-    if not enable_real:
-        return False, "Real trading disabled - enable in sidebar"
-    
+    """[CLEANED SAFE] Real trading permanently disabled."""
     try:
-        symbol = idea.get('symbol','NIFTY')
-        strike = idea.get('strike',0)
-        opt_type = idea.get('option','CE')
-        expiry = idea.get('expiry','')
-        
-        # Safety checks
-        if live_ltp <= 0:
-            return False, "Live LTP 0 - cannot place real order"
-        
-        if live_ltp > 1000:
-            return False, f"LTP too high: ₹{live_ltp} - safety check failed"
-        
-        # Place BUY order
-        ok, msg, order_id = place_angel_real_order(
-            symbol=symbol,
-            strike=strike,
-            opt_type=opt_type,
-            expiry=expiry,
-            quantity=quantity,
-            order_type="BUY",
-            price=0  # Market order
-        )
-        
-        # Send Telegram notification for real order
-        if ok:
-            try:
-                bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN","")
-                chat_id = st.secrets.get("TELEGRAM_CHAT_ID","")
-                if bot_token and chat_id:
-                    real_msg = f"""🔴 *REAL ORDER PLACED - {symbol}*
-
-📊 *{symbol} {strike} {opt_type}*
-💰 Entry: ₹{live_ltp:.2f} x {quantity} qty
-🆔 Order ID: {order_id}
-⏰ {datetime.now(IST).strftime('%d-%b %H:%M:%S IST')}
-
-⚠️ REAL MONEY ORDER - Check Angel One app!"""
-                    send_telegram_message(bot_token, chat_id, real_msg)
-            except:
-                pass
-        
-        return ok, msg
-        
-    except Exception as e:
-        return False, f"Real trade error: {str(e)[:100]}"
+        logging.warning("[SAFE] execute_real_trade_with_confirmation blocked - real trading disabled")
+    except Exception:
+        pass
+    return False, "Real trading disabled in SAFE mode - paper only"
 
 
 def execute_paper_order(symbol: str, action: str, strike: Any, option_type: str, price: float, qty: int, sl: float, t1: float, t2: float, expiry: str, reasons: str, is_equity: bool = False) -> bool:
@@ -8958,7 +8589,8 @@ def execute_paper_order(symbol: str, action: str, strike: Any, option_type: str,
             bot_t, chat_t = get_telegram_keys()
             if bot_t and chat_t:
                 _v22_ultra_send_raw(bot_t, chat_t, msg_rules)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     except Exception as e:
         print(f"V22 active call fail {e}")
@@ -8988,7 +8620,8 @@ def close_paper_position(trade_id: str, current_ltp: float, exit_reason: str):
     try:
         exit_msg = f"⚡ EXIT {pos.get('symbol')} {pos.get('strike')} {pos.get('option_type')} Entry Rs {pos.get('entry_price',0):.2f} -> Exit Rs {fill_exit:.2f} P&L Rs {costs.get('net_pnl',0):+.2f} Reason: {exit_reason} Time: {datetime.now(IST).strftime('%H:%M:%S IST')}"
         ultra_fast_telegram_send(exit_msg, force=True)
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     port["trade_history"].append(pos)
     port["daily_realized_pnl"] += costs["net_pnl"]
@@ -9075,7 +8708,8 @@ def get_optimal_option_strike(symbol: str, spot: float, side: str, chain: Option
                 ltp = ultra_ltp
                 price_source = ultra_src + "_BROKER_MATCHED"
                 is_live = True
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
     
     if ltp is None or ltp <= 0:
@@ -10073,12 +9707,14 @@ def analyze_equity_setup(stock_info: Dict[str, Any], quote: Dict[str, Any], df: 
                     _vol_avg = float(df[_vol_col].tail(20).mean() or 0)
                 else:
                     _vol_last, _vol_avg = 0, 0
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 _vol_last, _vol_avg = 0, 0
             # price change - last 2 candles se
             try:
                 _pc = float((df["close"].iloc[-1] - df["close"].iloc[-2]) / df["close"].iloc[-2] * 100) if len(df) >= 2 else 0
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 _pc = 0.2 if _eq_dir == "BULLISH" else -0.2
             _v, _s, _r, _d, _vo = calculate_overall_strong_signal_v55_2(
                 price=last, vwap=vwap, ema20=ema20, ema50=ema50, ema200=ema200,
@@ -10179,9 +9815,11 @@ def call_gemini_cascade(prompt: str) -> str:
                                 models_to_try.append(name)
                     if models_to_try:
                         break
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     stable_fallback = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash", "gemini-pro", "gemini-1.5-pro"]
@@ -10200,9 +9838,11 @@ def call_gemini_cascade(prompt: str) -> str:
                 resp = client.models.generate_content(model=model_name, contents=prompt)
                 if hasattr(resp, "text") and resp.text and len(resp.text.strip()) > 20:
                     return resp.text
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 continue
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
 
     try:
@@ -10214,9 +9854,11 @@ def call_gemini_cascade(prompt: str) -> str:
                 resp = mod.generate_content(prompt)
                 if hasattr(resp, "text") and resp.text and len(resp.text.strip()) > 20:
                     return resp.text
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 continue
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
 
     try:
@@ -10235,9 +9877,11 @@ def call_gemini_cascade(prompt: str) -> str:
                             txt = "".join([p.get("text", "") for p in parts])
                             if txt and len(txt.strip()) > 20:
                                 return txt
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     continue
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
 
     return ""
@@ -10248,7 +9892,8 @@ def ask_gemini(ideas, market_data):
     payload = {"market": market_data, "ideas": ideas}
     try:
         payload["fii_dii"] = fii_dii
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     prompt = f"""
@@ -10295,7 +9940,8 @@ max_loss_input = st.sidebar.number_input("Max Daily Loss Limit (₹)", min_value
 try:
     save_persistent_settings({'max_daily_loss_limit': float(max_loss_input)})
     st.session_state['persistent_settings']['max_daily_loss_limit'] = float(max_loss_input)
-except:
+except Exception as _clean_e:
+    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
     pass
 _v80_set_portfolio_field("daily_loss_limit", max_loss_input)  # V80: safe set
 
@@ -10585,7 +10231,8 @@ else:
     try:
         save_persistent_settings({'auto_alert_enabled': auto_alert_enabled, 'auto_scan_interval': auto_scan_interval})
         st.session_state['persistent_settings'].update({'auto_alert_enabled': auto_alert_enabled, 'auto_scan_interval': auto_scan_interval})
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # Time filter for auto trading - Morning/Afternoon
@@ -10617,7 +10264,8 @@ else:
     try:
         save_persistent_settings({'auto_time_mode': auto_time_mode, 'auto_start': auto_start, 'auto_end': auto_end})
         st.session_state['persistent_settings']['auto_time_mode'] = auto_time_mode
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # V53 PERSISTENT Conviction Filter - Always visible (bhai ka request) - Saves to file
@@ -10634,7 +10282,8 @@ else:
         save_persistent_settings({'min_conviction': global_min, 'global_min_conv': global_min})
         st.session_state['persistent_settings']['min_conviction'] = global_min
         st.session_state['persistent_settings']['global_min_conv'] = global_min
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     st.sidebar.caption(f"Current: {global_min}%+ = Trade AYEGA, <{global_min}% = SKIP | 💾 Saved")
     
@@ -10646,7 +10295,8 @@ else:
         start_minutes = auto_start[0] * 60 + auto_start[1]
         end_minutes = auto_end[0] * 60 + auto_end[1]
         is_within_time = start_minutes <= current_minutes <= end_minutes
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         is_within_time = True
     
     if auto_alert_enabled:
@@ -10670,26 +10320,28 @@ else:
     # V53 FIXED: Define defaults BEFORE using them
     ps_real = st.session_state.get('persistent_settings', {})
     default_qty = ps_real.get('real_trading_qty_lots', ps_real.get('real_trading_qty', 1))
-    default_enable_real = ps_real.get('enable_real_trading', False)
-    real_trading_qty = st.sidebar.number_input("Real Trading Qty (Lots)", min_value=1, max_value=10, value=default_qty, help="Number of lots for REAL trading - Persistent")
-    enable_real_trading = st.sidebar.checkbox("⚠️ Enable REAL Money Trading", value=default_enable_real, help="WARNING: Places REAL orders with REAL money on Angel One! - Persistent, save hoga")
+    default_enable_real = False  # CLEANED SAFE
+    real_trading_qty = 1  # CLEANED SAFE: real qty input removed, unused in paper mode
+    enable_real_trading = False  # CLEANED SAFE: checkbox removed, real trading hard OFF
+    st.sidebar.caption('SAFE MODE: Real trading disabled - Paper only')
     # Save real trading settings AFTER both defined
     try:
-        save_persistent_settings({'enable_real_trading': enable_real_trading, 'real_trading_qty_lots': real_trading_qty, 'real_trading_qty': real_trading_qty})
-        st.session_state['persistent_settings'].update({'enable_real_trading': enable_real_trading, 'real_trading_qty_lots': real_trading_qty})
-    except:
+        save_persistent_settings({'enable_real_trading': False, 'real_trading_qty_lots': real_trading_qty, 'real_trading_qty': real_trading_qty})
+        st.session_state['persistent_settings'].update({'enable_real_trading': False, 'real_trading_qty_lots': real_trading_qty})
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # V34 FULL AUTO ENTRY/EXIT AT MARKET
     auto_real_entry = False
-    if enable_real_trading:
+    if False:  # CLEANED SAFE: real trading hard OFF
         st.sidebar.markdown("#### 🤖 Full Auto Mode")
         ps_auto_real = st.session_state.get('persistent_settings', {})
-        default_auto_entry = ps_auto_real.get('auto_real_entry_enabled', ps_auto_real.get('auto_real_entry', False))
-        default_auto_exit = ps_auto_real.get('auto_real_exit', False)
+        default_auto_entry = False  # CLEANED SAFE
+        default_auto_exit = False  # CLEANED SAFE
         default_require_confirm = ps_auto_real.get('require_confirm_call', True)
-        auto_real_entry = st.sidebar.checkbox("🚀 Auto Entry @ MARKET on Setup", value=default_auto_entry, help="When ON: Auto BUY at market price when entry setup comes - no click needed! - Persistent")
-        auto_real_exit = st.sidebar.checkbox("🎯 Auto Exit @ MARKET on SL/Target", value=default_auto_exit, help="When ON: Auto SELL at market price when SL or Target hits! - Persistent")
+        auto_real_entry = False  # CLEANED SAFE: auto entry checkbox removed
+        auto_real_exit = False  # CLEANED SAFE: auto exit checkbox removed
         
         # V43 CONFIRM CALL - Safety for real money
         st.sidebar.markdown("#### 📞 Confirm Before Real Entry")
@@ -10783,7 +10435,8 @@ Entry: ₹108.20 → Exit: ₹95.30
                     }
                     try:
                         save_pending_to_file(pkey, st.session_state[pkey])
-                    except:
+                    except Exception as _clean_e:
+                        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                         pass
                     # V54 FIXED: Use new Telegram YES/NO buttons for dummy too
                     try:
@@ -10822,27 +10475,28 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             st.sidebar.warning("⚠️ No Confirm - Direct auto entry @ MARKET")
         
         # Store in session state for background tasks
-        st.session_state['auto_real_entry_enabled'] = auto_real_entry and auto_real_exit
+        st.session_state['auto_real_entry_enabled'] = False  # CLEANED SAFE
         try:
-            save_persistent_settings({'auto_real_entry_enabled': auto_real_entry, 'auto_real_exit': auto_real_exit, 'require_confirm_call': require_confirm, 'real_trading_qty_lots': real_trading_qty, 'enable_real_trading': enable_real_trading})
-            st.session_state['persistent_settings'].update({'auto_real_entry_enabled': auto_real_entry, 'auto_real_exit': auto_real_exit, 'require_confirm_call': require_confirm})
-        except:
+            save_persistent_settings({'auto_real_entry_enabled': False, 'auto_real_exit': False, 'require_confirm_call': require_confirm, 'real_trading_qty_lots': real_trading_qty, 'enable_real_trading': False})
+            st.session_state['persistent_settings'].update({'auto_real_entry_enabled': False, 'auto_real_exit': False, 'require_confirm_call': require_confirm})
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pass
         # Don't hardcode 75 - will use INDEX_METADATA per symbol at order time
         st.session_state['real_trading_qty_lots'] = real_trading_qty
-        st.session_state['enable_real_trading'] = enable_real_trading
+        st.session_state['enable_real_trading'] = False  # CLEANED SAFE
         # Show correct lot sizes
         st.sidebar.caption(f"NIFTY 1 lot = 65 qty | BANKNIFTY 1 lot = 30 qty (NSE revised Dec 2025)")
         
-        if auto_real_entry:
+        if False:  # CLEANED SAFE: auto entry hard OFF
             st.sidebar.success(f"✅ Auto Entry @ MARKET ON - {real_trading_qty} lots")
-        if auto_real_exit:
+        if False:  # CLEANED SAFE: auto exit hard OFF
             st.sidebar.success(f"✅ Auto Exit @ MARKET ON - SL/Target auto")
     
-    if enable_real_trading:
+    if False:  # CLEANED SAFE: real trading hard OFF
         st.sidebar.error("⚠️ REAL MONEY MODE ON! Orders will be placed on Angel One with real money!")
         st.sidebar.caption(f"Qty: {real_trading_qty} lot(s)")
-        if auto_real_entry:
+        if False:  # CLEANED SAFE: auto entry hard OFF
             st.sidebar.warning("🤖 FULL AUTO: Entry + Exit @ MARKET without click!")
     else:
         st.sidebar.caption("Paper trading only (safe)")
@@ -10894,7 +10548,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                             if st.button(f"✅ YES - BUY", key=f"yes_{pkey}", type="primary"):
                                 # Execute real trade
                                 try:
-                                    ok, msg = auto_entry_market_price(idea, live_ltp, qty, enable_real=st.session_state.get('enable_real_trading', False))
+                                    ok, msg = auto_entry_market_price(idea, live_ltp, qty, enable_real=False)
                                     if ok:
                                         _v81_flash(f"✅ REAL ORDER PLACED: {msg}", "success")
                                         # Remove pending
@@ -10910,7 +10564,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                     del st.session_state[pkey]
                                     _v81_flash("❌ Cancelled - Order not placed", "info")
                                     _v81_safe_rerun()
-                                except:
+                                except Exception as _clean_e:
+                                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                     pass
                         st.divider()
                 except Exception as e:
@@ -10940,7 +10595,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         _has_pos = bool(st.session_state.get('paper_portfolio', {}).get('positions'))
         if _has_pos:
             auto_check_and_exit_positions()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
 
     # V55 FIX: Duplicate instant-exit hataya - _instant_exit_v22 hi kaafi hai.
@@ -11025,9 +10681,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                 macro_data = global_macro_inst.fetch_macro_quotes() if global_macro_inst else {}
                 try:
                     st.session_state['_cached_macro_quotes'] = macro_data
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             macro_data = {}
         pcr_val = 1.05
         try:
@@ -11037,20 +10695,24 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             else:
                 # V66: PCR ke liye bhi chain mat fetch karo (20s), cached 1.05 hi kaafi hai. Asli PCR SCAN pe aayega.
                 pcr_val = 1.05
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pcr_val = 1.05
         try:
             fii_dii_info = fii_dii if isinstance(fii_dii, dict) and fii_dii.get("available") else {"available": False, "score": 0, "bias": "NEUTRAL"}
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             fii_dii_info = {"available": False, "fii_net": None, "dii_net": None, "combined": None, "score": 0, "bias": "NEUTRAL", "phase": "Consensus Bias"}
 
         try:
             pred = calculate_indian_market_prediction(macro_data, domestic_pcr=pcr_val, fii_dii_info=fii_dii_info)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pred = {"verdict": "FLAT / SIDEWAYS CHOPPY OPENING", "points_range": "-25 to +25 Points (Range-bound)", "badge": "prediction-card-gold", "confidence": 68, "action": "Range consolidation expected. Pehle 15-minute high/low breakout ka wait karein."}
         try:
             icon = ROCKET if "GAP-UP" in pred["verdict"] else (DOWN_ARROW if "GAP-DOWN" in pred["verdict"] else SCALE)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             icon = SCALE
 
         st.markdown(
@@ -11212,9 +10874,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                         _v, _t = _spot_cache_v19[_ck]
                         if _v and _v > 0:
                             spot = float(_v)
-                except:
+                except Exception as _clean_e:
+                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                     pass
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             spot = None
         # PCR - session se last PCR lo, chain dobara mat fetch karo
         try:
@@ -11223,27 +10887,32 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                 pcr = 1.05
             else:
                 pcr = float(pcr)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pcr = 1.05
         # Chain - sirf tab fetch karo jab bilkul zaroori ho, nahi to khali chain se GEX fallback chalega
         try:
             chain = pd.DataFrame()
             # Ticker me chain aa chuka hota hai, par yahan dobara fetch karne se 28 sec lagte the, isliye skip
             # GEX ko khali chain pe bhi fallback mil jayega (spot se 25,299 jaisa)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             chain = pd.DataFrame()
         # Candles - Yahoo/Angel slow hai, agar 5 sec me na aaye to khali se YELLOW dikhao, blank mat karo
         try:
             df_candles = add_indicators(fetch_ohlcv(selected_underlying, tf["smartapi"], tf["days"]), current_live_price=spot)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             df_candles = pd.DataFrame()
         try:
             macro_quotes = st.session_state.get('_cached_macro_quotes', {}) or (global_macro_inst.fetch_macro_quotes() if global_macro_inst else None)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             macro_quotes = None
         try:
             gex_info = compute_gex_and_max_pain(chain, spot, selected_underlying)
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             gex_info = {"net_gex_cr": 0.0, "gex_regime": "NEUTRAL", "gamma_flip": spot or 25000, "max_pain": spot or 25000, "call_wall": (spot or 25000)+200, "put_wall": (spot or 25000)-200, "expected_move": 150.0}
         light1 = analyze_candlesticks_and_volume(df_candles)
         light2 = analyze_smart_money(fii_dii, pcr, df=df_candles, current_spot=spot)
@@ -11350,7 +11019,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
     # This ensures Telegram exit comes on time even if no new entry
     try:
         auto_check_and_exit_positions()
-    except:
+    except Exception as _clean_e:
+        logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         pass
     
     # V45 FIXED AUTO SCAN LOGIC - High conviction alerts even outside time
@@ -11364,7 +11034,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             end_min_check = st.session_state.get('auto_end', (15,30))[0]*60 + st.session_state.get('auto_end', (15,30))[1]
             time_ok = start_min_check <= curr_min_check <= end_min_check
             is_warmup_time = curr_min_check < 570  # Before 9:30
-        except:
+        except Exception as _clean_e:
+            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             time_ok = True
             is_warmup_time = False
         
@@ -11390,13 +11061,15 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             try:
                 auto_check_and_exit_positions()
                 force_close_all_positions_same_day()
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
         elif not time_ok:
             # Even when not scanning, check exits
             try:
                 auto_check_and_exit_positions()
-            except:
+            except Exception as _clean_e:
+                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                 pass
 
 
@@ -11630,7 +11303,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                         # Score se color decide karo - 6/7 green, 5 yellow, 4 ya kam red
                         try:
                             _snum = int(str(_ss).split('/')[0]) if '/' in str(_ss) else 0
-                        except:
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             _snum = 0
                         # V85: colour verdict se, fixed 6/7 se nahi - kyunki denominator ab checked hai (5/5 bhi STRONG hai)
                         # V86: colour verdict se - READY ko alag blue diya, WAIT se confuse nahi hoga
@@ -11681,7 +11355,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                     except Exception as e:
                         try:
                             st.markdown(f"**Trade Setup {i} - {idea.get('symbol','NIFTY')} | Spot: {current_spot or 'Syncing...'}**")
-                        except:
+                        except Exception as _clean_e:
+                            logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                             st.markdown(f"**Trade Setup {i}**")
 
                     if is_option:
@@ -11717,7 +11392,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                         live_src = live_src2
                                         is_live_ok = is_live_ok2
                                         actual_exp_used = actual_exp_used2
-                                except:
+                                except Exception as _clean_e:
+                                    logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                     pass
                             
                             if not is_live_ok or live_ltp_now == 0:
@@ -11792,7 +11468,8 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                 idea['target1'] = new_t1
                                 idea['target2'] = new_t2
                                 idea['entry'] = live_ltp_now
-                            except:
+                            except Exception as _clean_e:
+                                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
                                 risk = max(round(live_ltp_now * 0.18, 2), 5.0)
                                 new_sl = round(live_ltp_now - risk, 2)
                                 new_t1 = round(live_ltp_now + (risk * 1.39), 2)
@@ -11837,11 +11514,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                                 )
                                 _v81_safe_rerun()
                         with col_real:
-                            if 'enable_real_trading' in locals() and enable_real_trading:
+                            if False:  # CLEANED SAFE: real trading hard OFF
                                 if st.button(f"🔴 REAL BUY: {idea['strike']} {idea['option']} ({real_trading_qty} lots) #{i}", key=f"btn_real_{i}", type="primary"):
                                     # Double confirmation
                                     if st.session_state.get(f'confirm_real_{i}', False):
-                                        ok, msg = execute_real_trade_with_confirmation(idea, live_ltp_now if 'live_ltp_now' in locals() else idea['entry'], real_trading_qty * lot_qty, enable_real=True)
+                                        ok, msg = execute_real_trade_with_confirmation(idea, live_ltp_now if 'live_ltp_now' in locals() else idea['entry'], real_trading_qty * lot_qty, enable_real=False)
                                         if ok:
                                             st.success(f"✅ REAL ORDER: {msg}")
                                             st.session_state[f'confirm_real_{i}'] = False
@@ -11953,86 +11630,20 @@ else:
 
 st.caption(f"Paper Trading Engine Active {BULLET} Real Broker Order Routing Disabled {BULLET} Strictly Educational Quantitative Research.")
 def auto_entry_market_price(idea, live_ltp, quantity_lots, enable_real=False):
-    """Auto Entry at MARKET PRICE when setup comes - no click needed - FIXED LOT SIZE"""
-    if not enable_real:
-        return False, "Real trading disabled"
-    
+    """[CLEANED SAFE] Auto real entry permanently disabled. enable_real is ignored."""
     try:
-        symbol = idea.get('symbol','NIFTY')
-        # Get correct lot size from INDEX_METADATA
-        lot_size = INDEX_METADATA.get(symbol, {}).get('lot_size', 65)
-        if symbol == 'NIFTY':
-            lot_size = 65
-        elif symbol == 'BANKNIFTY':
-            lot_size = 30
-        elif symbol == 'FINNIFTY':
-            lot_size = 60
-        elif symbol == 'MIDCPNIFTY':
-            lot_size = 120
-        elif symbol == 'SENSEX':
-            lot_size = 20
-        
-        quantity = quantity_lots * lot_size
-        
-        # Place BUY at market
-        ok, msg, order_id = place_angel_real_order(
-            symbol=symbol,
-            strike=idea.get('strike',0),
-            opt_type=idea.get('option','CE'),
-            expiry=idea.get('expiry',''),
-            quantity=quantity,
-            order_type="BUY",
-            price=0  # Market price
-        )
-        
-        if ok:
-            # Also create paper position for tracking
-            try:
-                lot_qty = quantity
-                execute_paper_order(
-                    symbol=idea["symbol"], action="BUY", strike=idea["strike"], option_type=idea["option"],
-                    price=live_ltp, qty=lot_qty, sl=idea["sl"], t1=idea["target1"], t2=idea["target2"],
-                    expiry=idea["expiry"], reasons=idea["why"] + " | AUTO REAL ENTRY", is_equity=False
-                )
-            except:
-                pass
-        
-        return ok, msg
-        
-    except Exception as e:
-        return False, str(e)[:80]
+        logging.warning("[SAFE] auto_entry_market_price blocked - real trading disabled")
+    except Exception:
+        pass
+    return False, "Real trading disabled in SAFE mode - paper only"
 
 def auto_exit_market_price(trade_id, position, live_ltp, enable_real=False):
-    """Auto Exit at MARKET PRICE when SL/Target hit"""
-    if not enable_real:
-        return False, "Real trading disabled"
-    
+    """[CLEANED SAFE] Auto real exit permanently disabled. enable_real is ignored."""
     try:
-        symbol = position.get('symbol','NIFTY')
-        strike = position.get('strike',0)
-        opt_type = position.get('option_type','CE')
-        expiry = position.get('expiry','')
-        qty = position.get('qty',0)
-        
-        # Place SELL at market
-        ok, msg, order_id = place_angel_real_order(
-            symbol=symbol,
-            strike=strike,
-            opt_type=opt_type,
-            expiry=expiry,
-            quantity=qty,
-            order_type="SELL",
-            price=0  # Market price for exit
-        )
-        
-        if ok:
-            # Close paper position
-            close_paper_position(trade_id, live_ltp, f"AUTO REAL EXIT @ ₹{live_ltp:.2f} | Order: {order_id}")
-        
-        return ok, msg
-        
-    except Exception as e:
-        return False, str(e)[:80]
+        logging.warning("[SAFE] auto_exit_market_price blocked - real trading disabled")
+    except Exception:
+        pass
+    return False, "Real trading disabled in SAFE mode - paper only"
 
 
 
