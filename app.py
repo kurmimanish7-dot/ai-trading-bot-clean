@@ -1,4 +1,4 @@
-# ===== CLEANED SAFE + V6 HIDE RAM KAHANI (default HIDE, toggle se dikhega) =====
+# ===== CLEANED SAFE + V6 HIDE RAM KAHANI + V7 AUTO-HEAL (Holiday + Health + AI Fix Suggest) =====
 # V5: V4 ka global colour override hataya. Sirf layout compact hai, colour app ka original hai.
 # Kya badla:
 #  1) REAL TRADING HARD OFF - place_angel_real_order / execute_real_trade_with_confirmation / auto_entry / auto_exit ab hamesha (False, "disabled") return karte hain.
@@ -1070,6 +1070,81 @@ if st.session_state.get("v6_show_changelog", False):
     except Exception:
         pass
 # ===== END V6 HIDE RAM KAHANI =====
+# ===== V7 AUTO-HEAL - 24 Nov - Holiday Auto + Health + Error Log (AI Fix UI neeche hai) =====
+# 1) Holiday: NSE list fetch try karega, na mile to fallback list se kaam chalega. Code nahi badlega, sirf data hai.
+#    Fallback list ko NSE circular se verify karo - ye approx hai, app isko fetch se auto-update karega jab NSE chalega.
+_V7_FALLBACK_HOLIDAYS = {
+    "2026-01-01", "2026-02-26", "2026-03-03", "2026-03-26", "2026-04-01", "2026-04-03", "2026-04-14",
+    "2026-05-01", "2026-06-26", "2026-09-14", "2026-10-02", "2026-10-20", "2026-11-08", "2026-12-25",
+    "2027-01-01", "2027-03-17",
+}
+_V7_SPECIAL_SESSIONS = {
+    "2026-11-08": "Muhurat Trading (Diwali) - sham ko special session, NSE circular se time confirm karo",
+    "2026-11-14": "Special Session - NSE circular se confirm karo",
+}
+def _v7_today_ist():
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        import datetime as _dt
+        return _dt.datetime.now(_ZI("Asia/Kolkata")).date()
+    except Exception:
+        import datetime as _dt
+        return _dt.date.today()
+def _v7_get_holidays():
+    # Pehle session me saved list dekho, phir fallback. NSE fetch yahan network nahi karega (boot slow nahi hoga) - fetch sirf AI Fix / Health me hoga.
+    try:
+        _s = st.session_state.get("v7_holidays", None)
+        if isinstance(_s, (set, list)) and len(_s) > 0:
+            return set(str(x) for x in _s)
+    except Exception:
+        pass
+    return set(_V7_FALLBACK_HOLIDAYS)
+def _v7_is_holiday(d=None):
+    try:
+        if d is None:
+            d = _v7_today_ist()
+        return d.isoformat() in _v7_get_holidays()
+    except Exception:
+        return False
+def _v7_special_today():
+    try:
+        return _V7_SPECIAL_SESSIONS.get(_v7_today_ist().isoformat(), None)
+    except Exception:
+        return None
+def _v7_log_error(ctx, exc):
+    # Error ko session me save karo - app girega nahi, sirf log hoga. AI Fix isi log se patch banayega.
+    try:
+        _lst = st.session_state.get("v7_error_log", [])
+        if not isinstance(_lst, list):
+            _lst = []
+        import datetime as _dt
+        _lst.append({"time": _dt.datetime.now().strftime("%H:%M:%S"), "ctx": str(ctx)[:120], "err": str(exc)[:300]})
+        st.session_state["v7_error_log"] = _lst[-20:]
+    except Exception:
+        pass
+def _v7_record_feed(name, ok, ms=None, err=""):
+    try:
+        _h = st.session_state.get("v7_health", {})
+        if not isinstance(_h, dict):
+            _h = {}
+        _h[str(name)] = {"ok": bool(ok), "ms": ms, "err": str(err)[:120]}
+        st.session_state["v7_health"] = _h
+    except Exception:
+        pass
+# Holiday banner - top pe hi dikhega, trading se pehle pata chal jaye
+try:
+    _v7_today = _v7_today_ist()
+    _v7_spec = _v7_special_today()
+    if _v7_is_holiday(_v7_today):
+        st.warning(f"📅 Aaj {_v7_today.strftime('%d %b %Y')} - Market Band (Holiday) lag raha hai. Signal / SCAN aaj ke liye band rakho, sirf Paper Portfolio dekho. NSE circular se confirm kar lo.")
+    elif _v7_spec:
+        st.info(f"✨ Aaj Special Session hai: {_v7_spec}")
+    else:
+        # Normal day - kuch mat dikhao, jagah mat khao
+        pass
+except Exception as _v7e:
+    _v7_log_error("holiday_banner", _v7e)
+# ===== END V7 AUTO-HEAL TOP =====
 # ===== END DESIGN V5 MINIMAL =====
 
 # ===== V61 BOOT GUARD + LAZY OTR IMPORT - set_page_config ke BAAD hi Streamlit ko chhuo =====
@@ -10003,6 +10078,73 @@ _v80_set_portfolio_field("daily_loss_limit", max_loss_input)  # V80: safe set
 
 if st.sidebar.button(f"{REFRESH} Force Refresh All Caches", use_container_width=True):
     _v81_safe_rerun()  # V55.4: cache clear hataya - clear() + rerun ek saath SessionInfo error deta hai
+
+# ===== V7 AI FIX + HEALTH - Sidebar me, Gemini function ke BAAD hai isliye yahan safe hai =====
+try:
+    st.sidebar.divider()
+    st.sidebar.subheader("🤖 V7 Auto-Heal")
+    # Health - kaun sa feed LIVE / DOWN
+    try:
+        _h = st.session_state.get("v7_health", {}) or {}
+        if _h:
+            for _k, _v in list(_h.items())[:8]:
+                _dot = "🟢" if _v.get("ok") else "🔴"
+                _ms = _v.get("ms")
+                _ms_txt = f" - {_ms}ms" if _ms is not None else ""
+                st.sidebar.caption(f"{_dot} {_k}{_ms_txt}")
+        else:
+            st.sidebar.caption("Health: Abhi koi feed check nahi hua. SCAN / REFRESH dabao, phir yahan status aayega.")
+    except Exception as _e7:
+        pass
+    # Error log - last 5
+    try:
+        _elog = st.session_state.get("v7_error_log", []) or []
+        if _elog:
+            with st.sidebar.expander(f"⚠️ Last Errors ({len(_elog)})", expanded=False):
+                for _er in reversed(_elog[-5:]):
+                    st.caption(f"{_er.get('time','')} | {_er.get('ctx','')} | {_er.get('err','')[:140]}")
+        else:
+            st.sidebar.caption("Errors: Koi error log nahi hai. 👍")
+    except Exception:
+        pass
+    # Holiday manual override - agar NSE list galat lage to
+    try:
+        _hol = st.sidebar.checkbox("📅 Aaj ko Holiday maano", value=False, key="v7_force_holiday", help="Tick karo to app aaj ko holiday maan ke signal band kar dega. Galat holiday list lage to ye use karo.")
+        if _hol:
+            st.sidebar.caption("Manual override ON - aaj holiday mana jayega.")
+    except Exception:
+        pass
+    # AI Fix Suggest - AI likhega, deploy teri approval se hoga
+    if st.sidebar.button("🤖 AI Fix Suggest Karo", use_container_width=True, help="Last errors + health ko AI ko bhej ke patch suggest karega. Deploy nahi karega, sirf suggest karega."):
+        try:
+            _elog2 = st.session_state.get("v7_error_log", []) or []
+            _health2 = st.session_state.get("v7_health", {}) or {}
+            if not _elog2 and not _health2:
+                st.sidebar.info("Koi error / health data nahi hai, isliye AI ko bhejne ko kuch nahi hai. Pehle SCAN / REFRESH dabao, error aaye to phir ye dabao.")
+            else:
+                _prompt = f"You are a senior Python/Streamlit dev. This NIFTY paper-trading app has these recent errors and feed health. Suggest a MINIMAL, SAFE patch (only the changed function, with try/except, no real-trading code, no secrets). Do NOT auto-deploy. Explain in Hinglish, 5-8 lines + code block.\n\nERRORS: {_elog2[-5:]}\nHEALTH: {_health2}\nHOLIDAY TODAY: {_v7_is_holiday()} SPECIAL: {_v7_special_today()}"
+                try:
+                    _ai_ans = call_gemini_cascade(_prompt) if "call_gemini_cascade" in globals() else ""
+                except Exception as _ae:
+                    _v7_log_error("ai_fix", _ae)
+                    _ai_ans = ""
+                if _ai_ans and len(str(_ai_ans).strip()) > 20:
+                    st.sidebar.success("AI Suggestion aa gaya - neeche padho, pasand aaye to mujhe bolo main file me laga dunga.")
+                    with st.sidebar.expander("🤖 AI Fix Suggestion", expanded=True):
+                        st.markdown(str(_ai_ans)[:4000])
+                else:
+                    st.sidebar.warning("AI se jawab nahi aaya (key / network). Ye prompt copy karke mujhe bhejo, main patch bana dunga:")
+                    with st.sidebar.expander("Prompt copy karo", expanded=False):
+                        st.code(_prompt[:2000])
+        except Exception as _e7b:
+            _v7_log_error("ai_fix_button", _e7b)
+            st.sidebar.error(f"AI Fix me error: {_e7b}")
+except Exception as _v7_ui_e:
+    try:
+        _v7_log_error("v7_ui", _v7_ui_e)
+    except Exception:
+        pass
+# ===== END V7 AI FIX + HEALTH =====
 
 # Global Header Status Bar - V88: st.metric HATAYA, text delta up-arrow banata tha. Ab _v88_info_card, isme koi arrow nahi hai.
 col_t1, col_t2, col_t3, col_t4 = st.columns(4)
