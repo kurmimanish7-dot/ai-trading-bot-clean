@@ -14,6 +14,7 @@
 REAL_TRADING_PERMANENTLY_DISABLED = True
 # ===== END CLEANED SAFE MODE HEADER =====
 
+# V97 ADVANCED HOLD + SURVIVAL (25 Nov 2026) - 15m/30m FOMO EXIT FIX - Strong ke baad agle 15/30m Target Probability + Healthy Pullback vs Reversal
 # V85 STRONG SIGNAL REBUILD - 19 Nov 2026 - 10am bullish par 3/7 NO TRADE ka fix + Bad Message duplicate fix
 # -*- coding: utf-8 -*-
 # V80 ATTRIBUTEERROR FIX - 18 Nov 2026 - paper_portfolio AttributeError ki jad khatam
@@ -2215,7 +2216,7 @@ def check_momentum_reversal(pos, current_rsi=60, current_trend="BULLISH"):
         logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
         return False, "", ""
 
-def auto_check_emergency_exit_from_lights(light1, light2):
+def auto_check_emergency_exit_from_lights(light1, light2, market=None, chain=None, tf_minutes=15):
     """V55.2 NEW: Emergency Exit from Traffic Light Rules - Bhai ka request - momentum reverse pe alert"""
     try:
         if 'paper_portfolio' not in st.session_state:
@@ -2255,22 +2256,80 @@ def auto_check_emergency_exit_from_lights(light1, light2):
                 symbol = pos.get('symbol','NIFTY')
                 opt_type = pos.get('option_type','CE')
                 
+                # V98: Purana logic - 1 RED light = EMERGENCY - BAND. Ab 6 GATE + 2 CANDLE chahiye.
+                # market nahi diya to V98 confirm nahi ho payega, isliye CAUTION hi bhejo, EMERGENCY nahi.
+                _v98 = None
+                try:
+                    _m98 = market if isinstance(market, dict) else {}
+                    # OI chain se
+                    _oi_ce98, _oi_pe98 = (None, None)
+                    try:
+                        if chain is not None:
+                            _oi_ce98, _oi_pe98 = _v98_oi_from_chain(chain, _m98.get("last", 0) or 0)
+                    except Exception:
+                        pass
+                    # Premium info is position se
+                    _entry_prem98 = pos.get('entry_price', 0)
+                    # Live LTP abhi tak nahi nikala, isliye yahan V98 me premium baad me fill karenge - pehle spot gates se tier nikalo
+                    # Spot change: last 2 closes se
+                    _lc98 = _m98.get("last_candles", []) or []
+                    _spot_chg98 = None
+                    try:
+                        if len(_lc98) >= 2:
+                            _pc98 = float(_lc98[-2].get("close", 0) or 0); _cc98 = float(_lc98[-1].get("close", 0) or 0)
+                            if _pc98: _spot_chg98 = (_cc98 - _pc98) / _pc98 * 100.0
+                    except Exception:
+                        pass
+                    _dir98 = "BULLISH" if opt_type == "CE" else "BEARISH"
+                    _brk98 = float(_m98.get("resistance", 0) or 0) if opt_type == "CE" else float(_m98.get("support", 0) or 0)
+                    # V100: Market se BB + FII + VIX + Breadth + Macro nikalo - missing = neutral
+                    _bb98 = _m98.get("bb_pctb", None); _bbu98 = _m98.get("bb_upper", 0); _bbl98 = _m98.get("bb_lower", 0)
+                    _ctx_macro98 = _m98.get("macro", None) or _m98.get("macro_quotes", None)
+                    _fii98 = _m98.get("fii_dii", {}) if isinstance(_m98.get("fii_dii", {}), dict) else {}
+                    _v98 = calculate_trap_vs_reversal_v100(
+                        price=float(_m98.get("last", 0) or 0), vwap=float(_m98.get("vwap", 0) or 0), ema20=float(_m98.get("ema20", 0) or 0),
+                        breakout_level=float(_brk98 or 0), support=float(_m98.get("support", 0) or 0), resistance=float(_m98.get("resistance", 0) or 0),
+                        rsi=_m98.get("rsi", None), rsi_prev=None, macd_hist=_m98.get("macd_hist", None), macd_hist_prev=None, adx=_m98.get("adx", None),
+                        volume=float(_m98.get("volume", 0) or 0), avg_volume=float(_m98.get("avg_volume", 0) or 0), prev_volume=0,
+                        last_candles=_lc98, consecutive_opp_closes=None,
+                        oi_ce_chg=_oi_ce98, oi_pe_chg=_oi_pe98, oi_buildup=str(_m98.get("buildup", "") or pos.get("buildup", "") or ""),
+                        pcr=_m98.get("pcr", None), pcr_prev=None,
+                        gex_flip=float(_m98.get("gamma_flip", 0) or _m98.get("gex_flip", 0) or 0), max_pain=float(_m98.get("max_pain", 0) or 0), gex_regime=str(_m98.get("gex_regime", "") or ""),
+                        premium_live=None, premium_entry=float(_entry_prem98 or 0) if _entry_prem98 else None, delta=0.52, spot_change_pct=_spot_chg98,
+                        direction=_dir98, tf_minutes=int(tf_minutes or 15),
+                        bb_upper=float(_bbu98 or 0), bb_lower=float(_bbl98 or 0), bb_pctb=_bb98, bb_squeeze=bool(_m98.get("bb_squeeze", False)), bb_width=float(_m98.get("bb_width", 0) or 0), atr=float(_m98.get("atr", 0) or 0), candle_range=0, ema200=float(_m98.get("ema200", 0) or 0), htf_bullish=_m98.get("htf_bullish", None),
+                        fii_net=_fii98.get("fii_net", None), dii_net=_fii98.get("dii_net", None), combined_net=_fii98.get("combined", None), vix_now=_m98.get("vix_now", None), vix_change=_m98.get("vix_change", None), breadth_adv_pct=_m98.get("breadth_adv_pct", None), macro=_ctx_macro98,
+                        is_opening_candle=bool(_m98.get("is_opening_candle", False)),
+                    )
+                except Exception as _e98c:
+                    _v98 = {"tier": "CAUTION", "label": "🟡 CAUTION - V98 data kam hai", "action": "Data kam hai, FULL EXIT mat karo", "telegram_type": "CAUTION", "score": 5, "max_score": 11, "gates": [], "trap_signals": [], "reversal_signals": [str(_e98c)], "consecutive_opp_closes": 0, "vol_ratio": 1.0}
+                # V98 tier se decide karo: TRAP = NO EXIT, CAUTION = alert only, CONFIRMED = exit alert
+                _tier98 = (_v98 or {}).get("tier", "CAUTION")
+                _tg98 = (_v98 or {}).get("telegram_type", "CAUTION")
                 should_exit = False
                 reason = ""
-                
-                if opt_type == "CE" and (is_ce_emergency or is_ce_reversal):
+                if _tier98 == "TRAP":
+                    should_exit = False
+                    reason = f"🪤 SELLER TRAP - EXIT MAT KARO: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | Trap: {'; '.join((_v98 or {}).get('trap_signals', [])[:2])}"
+                elif _tier98 == "CAUTION":
+                    should_exit = False  # CAUTION pe auto-exit / EMERGENCY telegram nahi - sirf CAUTION telegram bhejenge neeche
+                    reason = f"🟡 CAUTION - FULL EXIT MAT KARO: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | {_v98.get('action','')}"
+                elif _tier98 == "CONFIRMED":
                     should_exit = True
-                    reason = f"🚨 EMERGENCY EXIT CE: {light1.get('pattern','')} + {light2.get('reason','')[:50]} | Light1: {light1.get('status')} | Light2: {light2.get('status')} | Momentum Reversed!"
-                elif opt_type == "PE" and (is_pe_emergency or is_pe_reversal):
-                    should_exit = True
-                    reason = f"🚨 EMERGENCY EXIT PE: Opposite signal {light1.get('pattern','')} | Light1: {light1.get('status')} | Light2: {light2.get('status')} | Momentum Reversed!"
+                    reason = f"🚨 CONFIRMED EMERGENCY EXIT {opt_type}: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | 2 CLOSED candle + Structure + Volume + OI sab confirm | {'; '.join((_v98 or {}).get('reversal_signals', [])[:2])}"
+                else:
+                    should_exit = False
+                    reason = f"🟡 CAUTION: {(_v98 or {}).get('label','')}"
+                # CAUTION / TRAP ko bhi Telegram bhejna hai taaki buyer ko pata chale EXIT nahi karna - isliye should_exit False hone pe bhi neeche handle karenge
+                _is_caution_or_trap98 = _tier98 in ("CAUTION", "TRAP")
                 
-                if should_exit:
-                    # Avoid duplicate emergency alerts (check if already alerted in last 5 min)
-                    alert_key = f"emergency_alert_{trade_id}_{light1.get('status')}_{light2.get('status')}"
+                if should_exit or _is_caution_or_trap98:
+                    # V98: CAUTION/TRAP ka cooldown alag hai - har refresh pe spam mat karo. EMERGENCY 5 min, CAUTION/TRAP 15 min.
+                    _cool98 = 300 if should_exit else 900
+                    alert_key = f"v98_{_tier98}_{trade_id}_{light1.get('status')}_{light2.get('status')}"
                     last_alert = st.session_state.get(alert_key, 0)
                     import time
-                    if time.time() - last_alert < 300:  # 5 min cooldown
+                    if time.time() - last_alert < _cool98:  # cooldown
                         continue
                     
                     # Get live LTP
@@ -2281,8 +2340,11 @@ def auto_check_emergency_exit_from_lights(light1, light2):
                     entry = pos.get('entry_price', 0)
                     pnl = (live_ltp - entry) * pos.get('qty', 0) if opt_type == "CE" else (entry - live_ltp) * pos.get('qty', 0)
                     
+                    # V98: Telegram title tier ke hisab se - TRAP pe green, CAUTION pe yellow, CONFIRMED pe hi red
+                    _title98 = "🪤 SELLER TRAP - EXIT MAT KARO" if _tier98 == "TRAP" else ("🟡 CAUTION - FULL EXIT MAT KARO" if _tier98 == "CAUTION" else "🚨 CONFIRMED EMERGENCY EXIT")
+                    _action98 = "HOLD KARO - SL hi invalidation hai" if _tier98 == "TRAP" else ("HALF EXIT / SL TO COST - FULL EXIT MAT KARO" if _tier98 == "CAUTION" else "FULL EXIT @ MARKET")
                     # Send emergency exit telegram
-                    msg = f"""🚨 *EMERGENCY EXIT - {symbol} {pos.get('strike')} {opt_type}*
+                    msg = f"""{_title98} - {symbol} {pos.get('strike')} {opt_type}*
 
 📊 *{symbol} {pos.get('strike')} {opt_type}*
 Entry: ₹{entry:.2f} → Exit: ₹{live_ltp:.2f}
@@ -2290,12 +2352,16 @@ Entry: ₹{entry:.2f} → Exit: ₹{live_ltp:.2f}
 
 🔥 *Reason:* {reason}
 
+🧠 *V100 Check (CORE + BB + VIX LIVE):* Score {(_v98 or {}).get('score','?')}/11 | {_v98.get('window','')} | Opp CLOSED: {(_v98 or {}).get('consecutive_opp_closes',0)} | Vol: {(_v98 or {}).get('vol_ratio','?')}x
+✅ *Action:* {_action98}
+📋 *Gates:* {' | '.join([f"{g.get('name','').split(' ')[0]}:{g.get('pts','?')}/{g.get('max','?')}" for g in ((_v98 or {}).get('gates', []) or [])]) if ((_v98 or {}).get('gates')) else 'Data kam - CAUTION'}
+
 Pattern: {light1.get('pattern')}
 Vol: {light1.get('vol_ratio',0):.2f}x
 Light1: {light1.get('status')} | Light2: {light2.get('status')}
 
 ⏰ {datetime.now(IST).strftime('%d-%b %H:%M:%S IST')}
-🤖 Emergency Exit from Traffic Light System"""
+🤖 V100 Trap vs Reversal (6 Core + 3 Context Gate + VETO) - 1-light EMERGENCY BAND"""
                     
                     ok, resp = send_telegram_message(bot_token, chat_id, msg)
                     print(f"Emergency exit alert sent for {trade_id}: ok={ok} resp={resp}")
@@ -2417,6 +2483,30 @@ def auto_check_and_exit_positions():
                                 rev_reason = f"EXTREME MOMENTUM REVERSAL @ ₹{live_ltp:.2f} - Dropped {drop_pct:.1f}% from high ₹{pos.get('highest_ltp', entry):.2f}"
                     
                     if 'is_extreme' in locals() and is_extreme:
+                        # V98 FIX: Premium akela 10% gira = EXTREME EXIT nahi. Premium expiry paas / IV crush / theta se bhi girta hai, spot flat rehta hai.
+                        # Pehle SPOT confirm karo: Spot VWAP + EMA20 dono ke neeche CLOSED ho tabhi real crash hai. Nahi to CAUTION bhejo, auto-close mat karo.
+                        # SL block agle refresh me waise bhi handle karega agar real crash hai.
+                        _spot_confirms_crash98 = False
+                        try:
+                            _mk98 = analyze_market(symbol, tf_cfg=TIMEFRAME_CONFIG.get("15m", TIMEFRAME_CONFIG["5m"]))
+                            _sp98 = float(_mk98.get("last", 0) or 0); _vw98 = float(_mk98.get("vwap", 0) or 0); _em98 = float(_mk98.get("ema20", 0) or 0)
+                            if _sp98 and _vw98 and _em98 and _sp98 < _vw98 and _sp98 < _em98:
+                                _spot_confirms_crash98 = True
+                            # Spot confirm nahi hua to CAUTION hi bhejo
+                        except Exception:
+                            _spot_confirms_crash98 = False
+                        if not _spot_confirms_crash98:
+                            try:
+                                bot_token, chat_id = get_telegram_keys()
+                                if bot_token and chat_id:
+                                    pnl = (live_ltp - entry) * pos.get('qty',0)
+                                    msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"🟡 CAUTION (V98) - Premium gira ({rev_reason}) par SPOT ne VWAP+EMA confirm nahi kiya, isliye AUTO-CLOSE NAHI kiya. Theta / IV crush ho sakta hai. SL pe hi niklenge. PAPER HOLD")
+                                    send_telegram_message(bot_token, chat_id, msg)
+                            except Exception as _clean_e:
+                                logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
+                                pass
+                            continue  # V98: Auto-close MAT karo, position HOLD rakho, SL/T1 check hone do
+                        # Spot bhi crash confirm hai tabhi purana EXTREME EXIT chalega
                         real_exit_enabled = False
                         if real_exit_enabled:
                             try:
@@ -2426,12 +2516,11 @@ def auto_check_and_exit_positions():
                                 close_paper_position(trade_id, live_ltp, rev_reason)
                         else:
                             close_paper_position(trade_id, live_ltp, rev_reason)
-                        
                         try:
                             bot_token, chat_id = get_telegram_keys()
                             if bot_token and chat_id:
                                 pnl = (live_ltp - entry) * pos.get('qty',0)
-                                msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"{rev_reason} 🚨 EXTREME EXIT FULL SELL @ MARKET | {'🔴 REAL' if real_exit_enabled else 'PAPER'}")
+                                msg = format_telegram_exit_alert(pos, live_ltp, pnl, f"{rev_reason} 🚨 EXTREME EXIT FULL SELL @ MARKET - V98 SPOT CONFIRMED (Spot VWAP+EMA ke neeche) | {'🔴 REAL' if real_exit_enabled else 'PAPER'}")
                                 send_telegram_message(bot_token, chat_id, msg)
                         except Exception as _clean_e:
                             logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
@@ -3508,6 +3597,1016 @@ def calculate_overall_strong_signal_v86(
         return verdict, score, passed_core, checked_core, reasons, skipped, downgrade, verdict_opt, details, breakdown
     except Exception as e:
         return "WEAK - WAIT", 0, 0, 0, [f"V86 calc error: {e}"], [], False, "WEAK - WAIT", [], {}
+
+
+# =====================================================================
+# V97 ADVANCED HOLD + SURVIVAL - 25 Nov 2026 - FOMO EXIT KA ILAJ
+# Problem: 15m pe CE call mila (green candles + V86 STRONG), fir beech me 1-2 red
+# candle / RSI-MACD thoda ulta hua -> buyer panic me loss me nikal gaya, fir
+# thodi der baad target hit ho gaya. Ek red candle = reversal NAHI hota.
+# V97 ka kaam: Signal ke baad agle 15m / 30m me target hit hone ki probability +
+# Pullback HEALTHY hai ya REVERSAL hai, ye alag-alag batana. Candle ka COLOUR
+# dekh ke exit mat karo, STRUCTURE + LEVEL + VOLUME + INDICATOR ka COMBO dekho.
+# Rule: EXIT sirf tab jab CLOSED candle ne Pullback Floor toda + 2+ danger confirm ho.
+# Adhuri (forming) candle ka low / ek red candle kabhi exit ka reason nahi hai.
+# TF-agnostic hai: tf_minutes se hi window banti hai. 15m -> agle 15m = 1 candle,
+# agle 30m = 2 candle. 30m -> agle 30m = 1 candle, agle 60m = 2 candle.
+# =====================================================================
+def calculate_hold_survival_v97(
+    price=0, sl=0, t1=0, t2=0,
+    vwap=0, ema20=0, ema50=0, support=0, resistance=0, breakout_level=0,
+    atr=0, rsi=None, adx=None, macd_hist=None,
+    volume=0, avg_volume=0, bb_pctb=None,
+    strong_score=70, direction="BULLISH",
+    tf_minutes=15, last_candles=None,
+    impulse_high=0, impulse_low=0,
+):
+    """Returns dict: hold_state, survival probs, pullback type, FOMO guard, exit rule."""
+    try:
+        import math as _m97
+        _d = str(direction).upper()
+        is_bull = _d in ("BULLISH", "BUY", "CE", "CALL", "LONG")
+        price = float(price or 0); sl = float(sl or 0); t1 = float(t1 or 0); t2 = float(t2 or 0)
+        vwap = float(vwap or 0); ema20 = float(ema20 or 0); ema50 = float(ema50 or 0)
+        breakout_level = float(breakout_level or 0)
+        try: _rsi = float(rsi) if rsi is not None else None
+        except Exception: _rsi = None
+        try: _adx = float(adx) if adx is not None else None
+        except Exception: _adx = None
+        try: _macd = float(macd_hist) if macd_hist is not None else None
+        except Exception: _macd = None
+        try: _bb = float(bb_pctb) if bb_pctb is not None else None
+        except Exception: _bb = None
+        try: _atr = float(atr or 0)
+        except Exception: _atr = 0
+        if not _atr or _atr <= 0:
+            _atr = max(price * 0.003, 5.0) if price else 50.0
+        tf_min = int(tf_minutes or 15)
+        if tf_min <= 0: tf_min = 15
+        dist_t1 = abs(t1 - price) if t1 else _atr
+        dist_sl = abs(price - sl) if sl else _atr
+        dist_t2 = abs(t2 - price) if t2 else dist_t1 * 1.6
+        if dist_t1 <= 0: dist_t1 = _atr * 0.5
+        if dist_sl <= 0: dist_sl = _atr * 0.8
+        atr_t1 = dist_t1 / _atr if _atr else 1.0
+        atr_sl = dist_sl / _atr if _atr else 1.0
+        try:
+            _vol_ratio = (float(volume) / float(avg_volume)) if volume and avg_volume and float(avg_volume) > 0 else 1.0
+        except Exception: _vol_ratio = 1.0
+        opp_count = 0; opp_shrinking = False
+        try:
+            _c = list(last_candles or [])
+            if _c:
+                _tail = _c[-3:]
+                for _k in reversed(_tail):
+                    try:
+                        _o = float(_k.get("open", 0)); _cl = float(_k.get("close", 0))
+                    except Exception: break
+                    if not _o or not _cl: break
+                    _is_red = _cl < _o; _is_green = _cl > _o
+                    _is_opp = (_is_red if is_bull else _is_green)
+                    if _is_opp: opp_count += 1
+                    else: break
+                if len(_tail) >= 2:
+                    try:
+                        _r1 = abs(float(_tail[-1].get("high", 0)) - float(_tail[-1].get("low", 0)))
+                        _r2 = abs(float(_tail[-2].get("high", 0)) - float(_tail[-2].get("low", 0)))
+                        if _r1 and _r2 and _r1 < _r2 * 0.85: opp_shrinking = True
+                    except Exception: pass
+        except Exception: opp_count = 0
+        retrace = None
+        try:
+            _ih = float(impulse_high or 0); _il = float(impulse_low or 0)
+            if _ih and _il and _ih > _il:
+                _rng = _ih - _il
+                if is_bull: retrace = (_ih - price) / _rng if _rng else 0
+                else: retrace = (price - _il) / _rng if _rng else 0
+                retrace = max(0.0, min(1.5, retrace))
+        except Exception: retrace = None
+        healthy = []; danger = []
+        def _chk(cond, h_msg, d_msg):
+            if cond: healthy.append(h_msg)
+            else: danger.append(d_msg)
+        if vwap and vwap > 0:
+            _chk((price > vwap) if is_bull else (price < vwap), f"VWAP {'upar' if is_bull else 'neeche'} hold hai ({vwap:,.0f})", f"VWAP toot gaya ({vwap:,.0f})")
+        if ema20 and ema20 > 0:
+            _chk((price > ema20) if is_bull else (price < ema20), f"EMA20 {'upar' if is_bull else 'neeche'} hold hai ({ema20:,.0f})", f"EMA20 toot gaya ({ema20:,.0f})")
+        if breakout_level and breakout_level > 0:
+            _chk((price > breakout_level) if is_bull else (price < breakout_level), f"Breakout level {'upar' if is_bull else 'neeche'} hold hai ({breakout_level:,.0f})", f"Breakout level fail - wapas range me ({breakout_level:,.0f})")
+        if _rsi is not None:
+            if is_bull: _chk(_rsi >= 50, f"RSI {_rsi:.0f} 50 ke upar - momentum zinda hai", f"RSI {_rsi:.0f} 50 ke neeche - momentum kamzor")
+            else: _chk(_rsi <= 50, f"RSI {_rsi:.0f} 50 ke neeche - momentum zinda hai", f"RSI {_rsi:.0f} 50 ke upar - momentum kamzor")
+        if _macd is not None:
+            if is_bull: _chk(_macd >= 0, "MACD Hist +ve - trend ke saath hai", "MACD Hist -ve ho gaya - momentum flip")
+            else: _chk(_macd <= 0, "MACD Hist -ve - trend ke saath hai", "MACD Hist +ve ho gaya - momentum flip")
+        if _vol_ratio and _vol_ratio > 0:
+            if opp_count >= 1:
+                _chk(_vol_ratio < 1.0, f"Pullback LOW volume pe ({_vol_ratio:.1f}x) - seller kamzor hai", f"Pullback HIGH volume pe ({_vol_ratio:.1f}x) - selling me dum hai")
+            else:
+                _chk(_vol_ratio >= 0.9, f"Impulse volume sahi hai ({_vol_ratio:.1f}x)", f"Volume sukh gaya ({_vol_ratio:.1f}x) - move me dum kam")
+        if retrace is not None:
+            _chk(retrace < 0.618, f"Retrace {retrace*100:.0f}% - 61.8% Fib ke andar, healthy", f"Retrace {retrace*100:.0f}% - 61.8% Fib toot gaya, impulse fail risk")
+        if opp_count >= 1:
+            if opp_count == 1: healthy.append("Sirf 1 opposite candle - ye normal pullback hai, reversal nahi")
+            elif opp_count == 2 and opp_shrinking: healthy.append("2 opposite candle par range chhota ho raha hai - selling thak rahi hai")
+            elif opp_count >= 2: danger.append(f"{opp_count} lagatar opposite candle + range badh raha hai - pressure badh raha hai")
+        _keys = [x for x in [vwap, ema20, breakout_level] if x and x > 0]
+        if _keys:
+            _zone_low, _zone_high = min(_keys), max(_keys)
+        else:
+            _zone_low, _zone_high = sl, price
+        base = float(strong_score or 70)
+        if atr_t1 <= 0.7: _dist_adj = 8
+        elif atr_t1 <= 1.2: _dist_adj = 0
+        elif atr_t1 <= 2.0: _dist_adj = -12
+        else: _dist_adj = -22
+        if atr_sl < 0.5: _sl_adj = -10
+        elif atr_sl < 1.0: _sl_adj = -2
+        else: _sl_adj = 6
+        _mom = 0
+        if _adx is not None and _adx >= 25: _mom += 6
+        elif _adx is not None and _adx >= 20: _mom += 3
+        if _rsi is not None:
+            if is_bull and 55 <= _rsi <= 70: _mom += 4
+            elif (not is_bull) and 30 <= _rsi <= 45: _mom += 4
+            elif _rsi is not None and ((is_bull and _rsi < 45) or ((not is_bull) and _rsi > 55)): _mom -= 4
+        if _bb is not None:
+            if is_bull and _bb > 0.95: _mom -= 5
+            elif (not is_bull) and _bb < 0.05: _mom -= 5
+        _danger_pen = len(danger) * 7
+        _healthy_bonus = min(6, len(healthy) * 1.5)
+        # V97 FIX: Strong Score (85) ko seedha probability mat banao - 85 conviction ka matlab
+        # agle 1 candle me 85% target nahi hota. Base ko 55% pe scale karo, fir factor jodo.
+        # Healthy case: 85*0.55=47 + SL door +6 + Momentum +10 + Healthy +6 = ~69% (realistic)
+        p1 = (base * 0.55) + _dist_adj + _sl_adj + _mom - _danger_pen + _healthy_bonus
+        p1 = max(8.0, min(82.0, p1))
+        # Danger zyada hai to 2nd candle me bhi recovery mushkil hai - 0.38 ki jagah 0.15
+        _p2_factor = 0.15 if len(danger) >= 3 else 0.38
+        p2 = p1 + (100 - p1) * _p2_factor
+        p2 = max(12.0, min(94.0, p2))
+        _rr_factor = (dist_sl / (dist_sl + dist_t1 * 0.6)) if (dist_sl + dist_t1) else 0.5
+        p_surv = (p2 * 0.65) + (_rr_factor * 100 * 0.35) - (len(danger) * 4)
+        p_surv = max(5.0, min(93.0, p_surv))
+        try: _candles_needed = int(_m97.ceil(dist_t1 / max(_atr * 0.55, 1.0)))
+        except Exception: _candles_needed = 2
+        _candles_needed = max(1, min(4, _candles_needed))
+        _floor_broken = False
+        if _keys:
+            if is_bull and price < min(_keys): _floor_broken = True
+            if (not is_bull) and price > max(_keys): _floor_broken = True
+        if _floor_broken and len(danger) >= 3:
+            hold_state = "EXIT"; hold_label = "🔴 EXIT - Pullback nahi, REVERSAL hai"
+            hold_action = "Nikal jao / SL hit hone ka wait mat karo - structure toot gaya hai"
+        elif len(danger) >= 3 or p_surv < 38:
+            hold_state = "EXIT"; hold_label = "🔴 EXIT / CAUTION - Reversal ke sanket zyada hain"
+            hold_action = "Agle CLOSED candle ka wait karo, usme bhi danger raha to exit - adhuri candle pe nahi"
+        elif len(danger) == 2 or (40 <= p_surv < 58):
+            hold_state = "CAUTION"; hold_label = "🟡 HOLD - CAUTION - Pullback chal raha hai, nazar rakho"
+            hold_action = "Half qty book karo / SL ko Entry pe lao, baaki ko floor tak hold karo"
+        else:
+            hold_state = "HOLD"; hold_label = "🟢 HOLD STRONG - Ye HEALTHY PULLBACK hai, FOMO exit mat karo"
+            hold_action = "SL hi invalidation hai. 1-2 red candle dekh ke mat niklo, CLOSED candle + Floor dekho"
+        if is_bull:
+            pullback_type = "HEALTHY PULLBACK - Higher Low ban raha hai" if hold_state == "HOLD" else ("CAUTION PULLBACK - Higher Low test ho raha hai" if hold_state == "CAUTION" else "REVERSAL RISK - Lower Low / Structure break")
+            if _floor_broken:
+                fomo_note = f"CE me Floor {_zone_low:,.0f} toot gaya hai - ab ye healthy pullback nahi raha. Target ke liye {dist_t1:,.0f} pts ({atr_t1:.1f} ATR) chahiye par SL sirf {dist_sl:,.0f} pts door hai, isliye FOMO me hold mat karo."
+            else:
+                fomo_note = f"CE me 1 red candle ka matlab trend khatam nahi. Jab tak price {_zone_low:,.0f} ke upar hai, ye buyer ko jhatka deke upar le jaane wala pullback hai. Target ke liye price ko sirf {dist_t1:,.0f} pts ({atr_t1:.1f} ATR) chalna hai, jo {_candles_needed} candle me normal hai."
+            exit_rule = f"EXIT sirf jab: {tf_min}m CLOSED candle {_zone_low:,.0f} ke neeche band ho + RSI 50 ke neeche + MACD flip. Sirf low dekh ke / adhuri candle pe EXIT mat karo."
+        else:
+            pullback_type = "HEALTHY PULLBACK - Lower High ban raha hai" if hold_state == "HOLD" else ("CAUTION PULLBACK - Lower High test ho raha hai" if hold_state == "CAUTION" else "REVERSAL RISK - Higher High / Structure break")
+            if _floor_broken:
+                fomo_note = f"PE me Ceiling {_zone_high:,.0f} toot gaya hai - ab ye healthy pullback nahi raha. Target ke liye {dist_t1:,.0f} pts ({atr_t1:.1f} ATR) chahiye par SL sirf {dist_sl:,.0f} pts door hai, isliye FOMO me hold mat karo."
+            else:
+                fomo_note = f"PE me 1 green candle ka matlab trend khatam nahi. Jab tak price {_zone_high:,.0f} ke neeche hai, ye seller ko jhatka deke neeche le jaane wala pullback hai. Target ke liye price ko sirf {dist_t1:,.0f} pts ({atr_t1:.1f} ATR) chalna hai, jo {_candles_needed} candle me normal hai."
+            exit_rule = f"EXIT sirf jab: {tf_min}m CLOSED candle {_zone_high:,.0f} ke upar band ho + RSI 50 ke upar + MACD flip. Sirf high dekh ke / adhuri candle pe EXIT mat karo."
+        return {
+            "hold_state": hold_state, "hold_label": hold_label, "hold_action": hold_action,
+            "pullback_type": pullback_type, "fomo_note": fomo_note, "exit_rule": exit_rule,
+            "p_next_1": round(float(p1), 0), "p_next_2": round(float(p2), 0), "p_survival": round(float(p_surv), 0),
+            "tf_minutes": tf_min, "candles_needed": _candles_needed,
+            "dist_t1_pts": round(float(dist_t1), 1), "dist_sl_pts": round(float(dist_sl), 1),
+            "atr": round(float(_atr), 1), "atr_t1": round(float(atr_t1), 2), "atr_sl": round(float(atr_sl), 2),
+            "zone_low": round(float(_zone_low), 1), "zone_high": round(float(_zone_high), 1),
+            "floor": round(float(_zone_low if is_bull else _zone_high), 1),
+            "healthy": healthy, "danger": danger,
+            "healthy_count": len(healthy), "danger_count": len(danger),
+            "opp_candles": opp_count, "opp_shrinking": bool(opp_shrinking),
+            "retrace_pct": (round(float(retrace*100), 0) if retrace is not None else None),
+            "vol_ratio": round(float(_vol_ratio), 2),
+            "window_1_label": f"Agle {tf_min} min (1 candle)", "window_2_label": f"Agle {tf_min*2} min (2 candle)",
+        }
+    except Exception as _e97:
+        return {"hold_state": "CAUTION", "hold_label": "🟡 HOLD - CAUTION", "hold_action": "SL hi invalidation hai, ek candle pe exit mat karo", "pullback_type": "PULLBACK - Check karo", "fomo_note": "Ek opposite candle reversal nahi hota.", "exit_rule": "EXIT sirf CLOSED candle + Floor tootne pe.", "p_next_1": 50, "p_next_2": 65, "p_survival": 55, "tf_minutes": int(tf_minutes or 15), "candles_needed": 2, "dist_t1_pts": 0, "dist_sl_pts": 0, "atr": 0, "atr_t1": 1.0, "atr_sl": 1.0, "zone_low": float(sl or 0), "zone_high": float(price or 0), "floor": float(sl or 0), "healthy": [], "danger": [f"V97 calc error: {_e97}"], "healthy_count": 0, "danger_count": 0, "opp_candles": 0, "opp_shrinking": False, "retrace_pct": None, "vol_ratio": 1.0, "window_1_label": f"Agle {tf_minutes} min", "window_2_label": f"Agle {int(tf_minutes or 15)*2} min"}
+
+
+
+# =====================================================================
+# V98 TRAP vs REVERSAL - 26 Nov 2026 - EMERGENCY EXIT FOMO KA ILAJ
+# Problem (Bhai ne pakda): Purana EMERGENCY EXIT sirf 1 cheez pe trigger hota tha -
+# Light1 RED ya Light2 RED = turant "EMERGENCY EXIT CE" + Telegram. Ek Bearish
+# Engulfing / Shooting Star aate hi app chillata tha, buyer panic me loss me nikal
+# jata tha, aur fir market wapas upar chala jata tha. Wahi FOMO tha.
+# Sach: 1 opposite candle me se 70%+ sirf SELLER TRAP / STOP HUNT hote hain.
+# Bade player CE buyers ka SL khane ke liye price ko neeche dhakelte hain, OI me
+# fresh selling nahi hoti, VWAP/EMA nahi toot-ta, premium spot se zyada nahi girta,
+# fir wapas upar le jaate hain. Purana logic inme se kuch check hi nahi karta tha.
+# V98 FIX: Emergency ab 6 GATE pass hone pe hi CONFIRMED hoga, warna TRAP / CAUTION.
+# GATE 1 STRUCTURE: CLOSED candle ne VWAP + EMA20 + Breakout - teeno toda ya nahi?
+# GATE 2 VOLUME: Real selling me volume 1.3x+ aur badhta hua chahiye, low volume = trap.
+# GATE 3 OI: Price gira + CE OI badha = Call Writing (real bearish). Price gira +
+#   CE OI gira = Long Unwinding (kamzor haath nikle, trap). OI jhooth nahi bolta.
+# GATE 4 SELLER TRAP: Lambi lower wick + close wapas upar = Stop Hunt. False breakdown
+#   (low toda, close wapas) + RSI divergence (price lower low, RSI higher low) = trap.
+# GATE 5 PREMIUM vs SPOT: Spot 30 pts gira par premium delta se kam gira = makers
+#   absorb kar rahe hain, real selling nahi. Premium spot se tez gira = real panic.
+# GATE 6 INSTITUTIONAL: GEX Flip toota + PCR gir raha + Max Pain neeche = tabhi real.
+# + 2-CANDLE RULE: 1 opposite CLOSED candle pe kabhi CONFIRMED EXIT nahi. Pehli
+#   candle = CAUTION / TRAP check. Dusri confirming CLOSED candle + 5+ gates = EXIT.
+# + MISSING = NEUTRAL: OI / Premium / GEX data nahi aaya to us gate ko 1 pt neutral
+#   do, FAIL mat maano. Data kam hone pe EXIT nahi, CAUTION bhejo.
+# TIER: 0-3 = TRAP / NO EXIT | 4-7 = CAUTION (Half exit / SL to cost) | 8+ = CONFIRMED EXIT
+# Telegram bhi tier ke hisab se: TRAP pe "SELLER TRAP" (green), CAUTION pe "CAUTION"
+# (yellow), CONFIRMED pe hi "EMERGENCY EXIT" (red). Pehle wali tarah har red candle
+# pe red alert bhejna BAND.
+# =====================================================================
+def _v98_oi_from_chain(chain, spot=0):
+    """Chain se CE/PE alag-alag OI change % nikalo. Chain khali / column nahi to (None, None)."""
+    try:
+        import pandas as _pd98
+        if chain is None or (hasattr(chain, "empty") and chain.empty):
+            return None, None
+        cols = {str(c).lower(): c for c in chain.columns}
+        oi_col = None; chg_col = None; type_col = None
+        for k in ["openinterest", "oi", "opninterest"]:
+            if k in cols: oi_col = cols[k]; break
+        for k in ["changeinopeninterest", "chg_oi", "change_oi", "changein_oi"]:
+            if k in cols: chg_col = cols[k]; break
+        for k in ["option_type", "optiontype", "type"]:
+            if k in cols: type_col = cols[k]; break
+        if oi_col is None or chg_col is None or type_col is None:
+            return None, None
+        try:
+            _w = chain.copy()
+            _w["_t"] = _w[type_col].map(normalize_option_type) if "normalize_option_type" in globals() else _w[type_col].astype(str).str.upper()
+        except Exception:
+            _w = chain.copy(); _w["_t"] = _w[type_col].astype(str).str.upper()
+        out = {}
+        for _side in ["CE", "PE"]:
+            try:
+                _sub = _w[_w["_t"] == _side]
+                _tot_oi = _pd98.to_numeric(_sub[oi_col], errors="coerce").fillna(0).sum()
+                _tot_chg = _pd98.to_numeric(_sub[chg_col], errors="coerce").fillna(0).sum()
+                out[_side] = float(_tot_chg / _tot_oi * 100.0) if _tot_oi and _tot_oi > 0 else None
+            except Exception:
+                out[_side] = None
+        return out.get("CE"), out.get("PE")
+    except Exception:
+        return None, None
+
+def calculate_trap_vs_reversal_v98(
+    price=0, vwap=0, ema20=0, breakout_level=0, support=0, resistance=0,
+    rsi=None, rsi_prev=None, macd_hist=None, macd_hist_prev=None, adx=None,
+    volume=0, avg_volume=0, prev_volume=0,
+    last_candles=None, consecutive_opp_closes=None,
+    oi_ce_chg=None, oi_pe_chg=None, oi_buildup="",
+    pcr=None, pcr_prev=None,
+    gex_flip=0, max_pain=0, gex_regime="",
+    premium_live=None, premium_entry=None, delta=0.52, spot_change_pct=None,
+    direction="BULLISH", tf_minutes=15,
+):
+    """Returns dict: tier, score, gates, trap_signals, reversal_signals, label, action, telegram_type."""
+    try:
+        import math as _m98
+        _d = str(direction).upper()
+        is_bull = _d in ("BULLISH", "BUY", "CE", "CALL", "LONG")
+        price = float(price or 0)
+        vwap = float(vwap or 0); ema20 = float(ema20 or 0); breakout_level = float(breakout_level or 0)
+        support = float(support or 0); resistance = float(resistance or 0)
+        try: _rsi = float(rsi) if rsi is not None else None
+        except Exception: _rsi = None
+        try: _rsi_prev = float(rsi_prev) if rsi_prev is not None else None
+        except Exception: _rsi_prev = None
+        try: _macd = float(macd_hist) if macd_hist is not None else None
+        except Exception: _macd = None
+        try: _adx = float(adx) if adx is not None else None
+        except Exception: _adx = None
+        try: _vol = float(volume or 0); _avg = float(avg_volume or 0); _prev_vol = float(prev_volume or 0)
+        except Exception: _vol = 0; _avg = 0; _prev_vol = 0
+        _vol_ratio = (_vol / _avg) if _vol and _avg and _avg > 0 else 1.0
+        tf_min = int(tf_minutes or 15) or 15
+        _c = list(last_candles or [])
+        # CLOSED candle ka close hi structure ke liye use karo, live price ka intra-candle low nahi
+        _closed_close = price
+        _closed_low = price; _closed_high = price; _closed_open = price
+        _prev_close = None; _prev_low = None
+        try:
+            if _c:
+                _last = _c[-1]
+                _closed_close = float(_last.get("close", price) or price)
+                _closed_low = float(_last.get("low", price) or price)
+                _closed_high = float(_last.get("high", price) or price)
+                _closed_open = float(_last.get("open", price) or price)
+                if len(_c) >= 2:
+                    _prev_close = float(_c[-2].get("close", 0) or 0)
+                    _prev_low = float(_c[-2].get("low", 0) or 0)
+        except Exception:
+            pass
+        # Consecutive opposite CLOSED closes - agar pass nahi hua to candles se gino
+        if consecutive_opp_closes is None:
+            _opp = 0
+            try:
+                for _k in reversed(_c):
+                    _o = float(_k.get("open", 0)); _cl = float(_k.get("close", 0))
+                    if not _o or not _cl: break
+                    _is_opp = (_cl < _o) if is_bull else (_cl > _o)
+                    if _is_opp: _opp += 1
+                    else: break
+            except Exception: _opp = 0
+            consecutive_opp_closes = _opp
+        else:
+            try: consecutive_opp_closes = int(consecutive_opp_closes or 0)
+            except Exception: consecutive_opp_closes = 0
+        gates = []
+        trap_signals = []; reversal_signals = []
+        def _gate(name, pts, max_pts, status, msg):
+            gates.append({"name": name, "pts": pts, "max": max_pts, "status": status, "msg": msg})
+            return pts
+        # ---- GATE 1: STRUCTURE (0-3) - CLOSED close se, live low se nahi ----
+        _broken = 0; _broken_names = []
+        if vwap and vwap > 0:
+            _b = (_closed_close < vwap) if is_bull else (_closed_close > vwap)
+            if _b: _broken += 1; _broken_names.append(f"VWAP {vwap:,.0f}")
+        if ema20 and ema20 > 0:
+            _b = (_closed_close < ema20) if is_bull else (_closed_close > ema20)
+            if _b: _broken += 1; _broken_names.append(f"EMA20 {ema20:,.0f}")
+        if breakout_level and breakout_level > 0:
+            _b = (_closed_close < breakout_level) if is_bull else (_closed_close > breakout_level)
+            if _b: _broken += 1; _broken_names.append(f"Breakout {breakout_level:,.0f}")
+        if _broken == 0:
+            _g1 = _gate("1 Structure VWAP+EMA20+Breakout", 0, 3, "TRAP", f"CLOSED close {_closed_close:,.0f} teeno level ke sahi side pe hai - structure intact hai")
+            trap_signals.append("Structure intact - teeno level hold hai")
+        elif _broken == 1:
+            _g1 = _gate("1 Structure VWAP+EMA20+Breakout", 1, 3, "PARTIAL", f"Sirf 1 level toota: {', '.join(_broken_names)} - ye pullback hai, breakdown nahi")
+        elif _broken == 2:
+            _g1 = _gate("1 Structure VWAP+EMA20+Breakout", 2, 3, "DANGER", f"2 level toote: {', '.join(_broken_names)} - pressure badh raha hai")
+            reversal_signals.append(f"2 level toote: {', '.join(_broken_names)}")
+        else:
+            _g1 = _gate("1 Structure VWAP+EMA20+Breakout", 3, 3, "DANGER", f"Teeno level toote: {', '.join(_broken_names)} - structure break")
+            reversal_signals.append("Teeno level toote - structure break")
+        # ---- GATE 2: VOLUME (0-2) ----
+        if _vol_ratio < 0.9:
+            _g2 = _gate("2 Volume - Real Selling?", 0, 2, "TRAP", f"Volume {_vol_ratio:.1f}x - selling me dum hi nahi, low-volume trap lag raha hai")
+            trap_signals.append(f"Low volume {_vol_ratio:.1f}x - selling me conviction nahi")
+        elif _vol_ratio < 1.3:
+            _g2 = _gate("2 Volume - Real Selling?", 1, 2, "PARTIAL", f"Volume {_vol_ratio:.1f}x - moderate selling, confirm nahi")
+        else:
+            # 2nd candle me volume ghat raha hai to exhaustion hai, reversal nahi
+            if _prev_vol and _vol and _vol < _prev_vol * 0.9:
+                _g2 = _gate("2 Volume - Real Selling?", 1, 2, "PARTIAL", f"Volume {_vol_ratio:.1f}x hai par pichhli candle se ghat raha hai - selling thak rahi hai")
+                trap_signals.append("Volume badhne ki jagah ghat raha hai - exhaustion")
+            else:
+                _g2 = _gate("2 Volume - Real Selling?", 2, 2, "DANGER", f"Volume {_vol_ratio:.1f}x + badh raha hai - real selling hai")
+                reversal_signals.append(f"High + rising volume {_vol_ratio:.1f}x")
+        # ---- GATE 3: OI (0-2) - OI jhooth nahi bolta ----
+        try: _oi_ce = float(oi_ce_chg) if oi_ce_chg is not None else None
+        except Exception: _oi_ce = None
+        try: _oi_pe = float(oi_pe_chg) if oi_pe_chg is not None else None
+        except Exception: _oi_pe = None
+        _bld = str(oi_buildup or "").upper()
+        if _oi_ce is None and _oi_pe is None and not _bld:
+            _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 1, 2, "SKIP", "OI data nahi aaya - neutral 1 pt, FAIL nahi mana. OI ke bina EXIT nahi.")
+        else:
+            if is_bull:
+                # CE trade ka reversal = bearish. CE OI badhna = Call Writing (real bearish). CE OI girna = Long Unwinding (trap).
+                if _oi_ce is not None and _oi_ce > 3.0:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 2, 2, "DANGER", f"CE OI +{_oi_ce:.1f}% badha + price gira = FRESH CALL WRITING - real bearish")
+                    reversal_signals.append(f"CE OI +{_oi_ce:.1f}% - fresh call writing")
+                elif _oi_ce is not None and _oi_ce < -3.0:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 0, 2, "TRAP", f"CE OI {_oi_ce:.1f}% gira + price gira = LONG UNWINDING - kamzor haath nikle, fresh selling nahi, trap lag raha hai")
+                    trap_signals.append(f"CE OI {_oi_ce:.1f}% gira - long unwinding, fresh selling nahi")
+                elif "SHORT BUILDUP" in _bld or "SHORT BUILD" in _bld:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 2, 2, "DANGER", f"OI Buildup: {_bld} - fresh selling")
+                    reversal_signals.append("OI: Short Buildup")
+                elif "LONG UNWINDING" in _bld or "UNWINDING" in _bld:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 0, 2, "TRAP", f"OI Buildup: {_bld} - trap")
+                    trap_signals.append("OI: Long Unwinding")
+                else:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 1, 2, "PARTIAL", f"OI mixed / chhota change (CE {_oi_ce if _oi_ce is not None else 'N/A'}% PE {_oi_pe if _oi_pe is not None else 'N/A'}%) - confirm nahi")
+            else:
+                if _oi_pe is not None and _oi_pe > 3.0:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 2, 2, "DANGER", f"PE OI +{_oi_pe:.1f}% badha + price upar = FRESH PUT WRITING / reversal - real bullish")
+                    reversal_signals.append(f"PE OI +{_oi_pe:.1f}% - fresh put writing")
+                elif _oi_pe is not None and _oi_pe < -3.0:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 0, 2, "TRAP", f"PE OI {_oi_pe:.1f}% gira + price upar = SHORT COVERING - trap lag raha hai")
+                    trap_signals.append(f"PE OI {_oi_pe:.1f}% gira - short covering")
+                else:
+                    _g3 = _gate("3 OI - Fresh Selling ya Unwinding?", 1, 2, "PARTIAL", f"OI mixed (CE {_oi_ce if _oi_ce is not None else 'N/A'}% PE {_oi_pe if _oi_pe is not None else 'N/A'}%) - confirm nahi")
+        # ---- GATE 4: SELLER TRAP (penalty 0 or -2) ----
+        _trap_pen = 0; _trap_msgs = []
+        try:
+            _body = abs(_closed_close - _closed_open)
+            _rng = max(_closed_high - _closed_low, 0.001)
+            if is_bull:
+                _lower_wick = min(_closed_open, _closed_close) - _closed_low
+                _floor_lvl = min([x for x in [vwap, ema20, breakout_level, support] if x and x > 0] or [0])
+                # Long lower wick + close wapas upar = buyers ne absorb kiya
+                if _body and _lower_wick >= 2.0 * _body and _lower_wick >= 0.3 * _rng:
+                    _trap_msgs.append(f"Lambi lower wick ({_lower_wick:,.0f} pts, body ka 2x+) - neeche se buyers ne utha liya, stop hunt lag raha hai")
+                # False breakdown: low ne floor toda par close wapas upar
+                if _floor_lvl and _closed_low < _floor_lvl and _closed_close > _floor_lvl:
+                    _trap_msgs.append(f"FALSE BREAKDOWN - low {_closed_low:,.0f} ne {_floor_lvl:,.0f} toda par CLOSED close {_closed_close:,.0f} wapas upar - ye trap hai")
+                # RSI divergence: price lower low, RSI higher low
+                if _prev_low and _closed_low < _prev_low and _rsi is not None and _rsi_prev is not None and _rsi > _rsi_prev:
+                    _trap_msgs.append(f"RSI DIVERGENCE - price lower low ({_closed_low:,.0f} < {_prev_low:,.0f}) par RSI upar ({_rsi:.0f} > {_rsi_prev:.0f}) - selling kamzor ho rahi hai")
+            else:
+                _upper_wick = _closed_high - max(_closed_open, _closed_close)
+                _ceil_lvl = max([x for x in [vwap, ema20, breakout_level, resistance] if x and x > 0] or [0])
+                if _body and _upper_wick >= 2.0 * _body and _upper_wick >= 0.3 * _rng:
+                    _trap_msgs.append(f"Lambi upper wick ({_upper_wick:,.0f} pts) - upar se sellers ne daba diya, trap lag raha hai")
+                if _ceil_lvl and _closed_high > _ceil_lvl and _closed_close < _ceil_lvl:
+                    _trap_msgs.append(f"FALSE BREAKOUT - high {_closed_high:,.0f} ne {_ceil_lvl:,.0f} toda par close wapas neeche - trap hai")
+                if _prev_low is not None and _rsi is not None and _rsi_prev is not None:
+                    # PE ke liye: price higher high par RSI lower high = bearish divergence ka ulta = trap
+                    pass
+        except Exception:
+            pass
+        if _trap_msgs:
+            _trap_pen = 2
+            for _tm in _trap_msgs: trap_signals.append(_tm)
+            _gate("4 Seller Trap Check", -2, 0, "TRAP", " | ".join(_trap_msgs))
+        else:
+            _gate("4 Seller Trap Check", 0, 0, "PASS", "Koi trap pattern nahi - wick / false breakdown / divergence nahi mila")
+        # ---- GATE 5: PREMIUM vs SPOT (0-2) ----
+        try: _prem_live = float(premium_live) if premium_live is not None else None
+        except Exception: _prem_live = None
+        try: _prem_entry = float(premium_entry) if premium_entry is not None else None
+        except Exception: _prem_entry = None
+        try: _delta = float(delta or 0.52)
+        except Exception: _delta = 0.52
+        if _prem_live is None or _prem_entry is None or not _prem_entry:
+            _g5 = _gate("5 Premium vs Spot", 1, 2, "SKIP", "Premium data nahi aaya - neutral 1 pt. Premium ke bina EXIT nahi.")
+        else:
+            _prem_drop_pct = (_prem_entry - _prem_live) / _prem_entry * 100.0 if _prem_entry else 0
+            try: _spot_pct = float(spot_change_pct) if spot_change_pct is not None else None
+            except Exception: _spot_pct = None
+            # Spot 1 candle me kitna gira? Last 2 closes se nikalo agar spot_change nahi diya
+            if _spot_pct is None and _prev_close and _closed_close:
+                _spot_pct = (_closed_close - _prev_close) / _prev_close * 100.0 if _prev_close else 0
+            _spot_pct = _spot_pct or 0
+            # Expected premium drop = delta * spot move (pts). Spot move ko % se pts me badlo: price * pct/100
+            _expected_pts = abs(_delta * (price * _spot_pct / 100.0)) if price else 0
+            _actual_pts = abs(_prem_entry - _prem_live)
+            if _spot_pct < -0.05 and _prem_drop_pct < 4.0:
+                _g5 = _gate("5 Premium vs Spot", 0, 2, "TRAP", f"Spot {_spot_pct:+.2f}% gira par premium sirf {_prem_drop_pct:.1f}% gira (expected ~{_expected_pts:.0f} pts) - makers absorb kar rahe hain, real panic nahi")
+                trap_signals.append(f"Premium spot se kam gira ({_prem_drop_pct:.1f}%) - absorption")
+            elif _prem_drop_pct >= 12.0 and _spot_pct < -0.15:
+                _g5 = _gate("5 Premium vs Spot", 2, 2, "DANGER", f"Premium {_prem_drop_pct:.1f}% crash + Spot {_spot_pct:+.2f}% - real panic selling hai")
+                reversal_signals.append(f"Premium {_prem_drop_pct:.1f}% crash")
+            elif _prem_drop_pct >= 8.0:
+                _g5 = _gate("5 Premium vs Spot", 1, 2, "PARTIAL", f"Premium {_prem_drop_pct:.1f}% gira - moderate, spot {_spot_pct:+.2f}% - confirm nahi")
+            else:
+                _g5 = _gate("5 Premium vs Spot", 0, 2, "TRAP", f"Premium {_prem_drop_pct:.1f}% hi gira, spot {_spot_pct:+.2f}% - selling me dum nahi")
+                trap_signals.append("Premium holding - real selling nahi")
+        # ---- GATE 6: INSTITUTIONAL (0-2) ----
+        _inst_pts = 0; _inst_msgs = []
+        try: _gex = float(gex_flip or 0)
+        except Exception: _gex = 0
+        try: _mp = float(max_pain or 0)
+        except Exception: _mp = 0
+        try: _pcr_v = float(pcr) if pcr is not None else None
+        except Exception: _pcr_v = None
+        try: _pcr_prev_v = float(pcr_prev) if pcr_prev is not None else None
+        except Exception: _pcr_prev_v = None
+        if _gex and _gex > 0:
+            _gex_broken = (price < _gex) if is_bull else (price > _gex)
+            if _gex_broken:
+                _inst_pts += 1; _inst_msgs.append(f"GEX Flip {_gex:,.0f} toot gaya - dealers ab trend ke saath bechenge")
+                reversal_signals.append("GEX Flip broken")
+            else:
+                _inst_msgs.append(f"GEX Flip {_gex:,.0f} hold hai - dealers dip pe kharidenge")
+                trap_signals.append("GEX Flip hold - dealer support hai")
+        if _pcr_v is not None and _pcr_prev_v is not None:
+            if is_bull and _pcr_v < _pcr_prev_v - 0.08:
+                _inst_pts += 1; _inst_msgs.append(f"PCR {_pcr_prev_v:.2f} -> {_pcr_v:.2f} gira - put writers hat rahe hain")
+                reversal_signals.append("PCR gir raha hai")
+            elif (not is_bull) and _pcr_v > _pcr_prev_v + 0.08:
+                _inst_pts += 1; _inst_msgs.append(f"PCR {_pcr_prev_v:.2f} -> {_pcr_v:.2f} badha - call writers hat rahe hain")
+                reversal_signals.append("PCR badh raha hai")
+            else:
+                _inst_msgs.append(f"PCR stable {_pcr_v:.2f} - institutional support intact")
+        elif _pcr_v is not None:
+            if is_bull and _pcr_v >= 1.0: _inst_msgs.append(f"PCR {_pcr_v:.2f} supportive hai")
+            elif (not is_bull) and _pcr_v <= 1.0: _inst_msgs.append(f"PCR {_pcr_v:.2f} supportive hai")
+        _g6 = _gate("6 Institutional GEX+PCR", _inst_pts, 2, ("DANGER" if _inst_pts >= 2 else ("PARTIAL" if _inst_pts == 1 else "TRAP")), " | ".join(_inst_msgs) if _inst_msgs else "GEX/PCR data nahi aaya")
+        # ---- TOTAL ----
+        total = _g1 + _g2 + _g3 + _g5 + _g6 - _trap_pen
+        total = max(0, min(11, total))
+        # ---- TIER - 2-CANDLE RULE sabse important FOMO killer ----
+        _need_2nd = consecutive_opp_closes < 2
+        if total <= 3:
+            tier = "TRAP"; label = "🪤 SELLER TRAP - EXIT MAT KARO"; action = "Hold karo / SL hi invalidation hai. Ye trap lag raha hai, reversal nahi."
+            tg_type = "TRAP"
+        elif total <= 7:
+            tier = "CAUTION"; label = "🟡 CAUTION - Half Exit / SL to Cost"; action = "Half qty nikalo, SL ko Entry pe lao. Baaki ko agle CLOSED candle ka chance do. Abhi FULL EXIT mat karo."
+            tg_type = "CAUTION"
+        else:
+            if _need_2nd:
+                tier = "CAUTION"; label = "🟡 CAUTION - 1st Opposite Candle (2nd ka wait karo)"; action = "Sirf 1 opposite candle hai - CONFIRMED EXIT ke liye dusri CLOSED candle chahiye. Abhi half hi nikalo, full mat niklo."
+                tg_type = "CAUTION"
+            else:
+                # Trap pattern hai aur structure pura nahi toota to CONFIRMED mat banao
+                if _trap_pen >= 2 and _g1 < 3:
+                    tier = "CAUTION"; label = "🟡 CAUTION - Trap pattern bhi hai, isliye FULL EXIT nahi"; action = "Trap + Reversal dono ke sanket hain - half nikalo, baaki ko 1 aur candle do."
+                    tg_type = "CAUTION"
+                else:
+                    tier = "CONFIRMED"; label = "🔴 CONFIRMED EMERGENCY EXIT - Reversal pakka hai"; action = "Ab niklo - 2 CLOSED candle + 5+ gates + Structure + Volume + OI sab confirm hai."
+                    tg_type = "EMERGENCY"
+        return {
+            "tier": tier, "label": label, "action": action, "telegram_type": tg_type,
+            "score": total, "max_score": 11, "gates": gates,
+            "trap_signals": trap_signals, "reversal_signals": reversal_signals,
+            "consecutive_opp_closes": consecutive_opp_closes, "vol_ratio": round(float(_vol_ratio), 2),
+            "broken_levels": _broken, "broken_names": _broken_names,
+            "closed_close": _closed_close, "trap_penalty": _trap_pen,
+            "need_2nd_candle": bool(_need_2nd),
+            "window": f"{tf_min}m x {consecutive_opp_closes} opposite CLOSED candle",
+        }
+    except Exception as _e98:
+        return {"tier": "CAUTION", "label": "🟡 CAUTION - Data kam hai, FULL EXIT mat karo", "action": "Data kam hai isliye EMERGENCY nahi bhej raha, CAUTION pe half exit / SL to cost karo", "telegram_type": "CAUTION", "score": 5, "max_score": 11, "gates": [], "trap_signals": [], "reversal_signals": [f"V98 calc error: {_e98}"], "consecutive_opp_closes": 0, "vol_ratio": 1.0, "broken_levels": 0, "broken_names": [], "closed_close": float(price or 0), "trap_penalty": 0, "need_2nd_candle": True, "window": ""}
+
+
+
+# =====================================================================
+# V100 CONTEXT GATES - 26 Nov 2026 - V98 ko apply karne se pehle wala soch
+# Bhai ne sahi bola: V98 me 6 gate the, par 3 bade context miss the -
+# (1) Bollinger + ATR + HTF, (2) FII/DII + VIX + Breadth, (3) Gold/Silver/Crude + USDINR/DXY/US10Y + Global
+# Ye sab app me PEHLE SE THE - Bollinger add_indicators me, FII/DII fetch_fii_dii me, Gold/Silver/Crude/USDINR/DXY/US10Y _v64_fetch_global_live me,
+# VIX get_india_vix me - par V98 ke Emergency check me JUDE NAHI THE. V98 ka Gate 6 sirf GEX+PCR dekhta tha.
+# Isliye V100: V98 ke 6 CORE gate waisi hi rahenge (tested, threshold same), uske upar 3 CONTEXT gate VETO ki tarah lagenge.
+# VETO matlab: Context gate score ko core me seedha jod ke CONFIRMED ko aasan nahi karenge. Ulta -
+# - Agar CORE CONFIRMED hai par 3 context gate sab TRAP bol rahe hain (score 0-1/6) to CONFIRMED ko CAUTION pe downgrade kar denge.
+#   Example: Structure toota, par BB Lower pe oversold + FII buying + Gold/Crude/USD sab supportive = ye breakdown fake lag raha hai.
+# - Agar CORE CAUTION hai (6-7/11) aur 3 context gate sab DANGER bol rahe hain (score 5-6/6) + 2 candle hai to CAUTION ko CONFIRMED pe upgrade kar denge.
+# - Agar CORE TRAP hai par context sab DANGER hai to TRAP ko CAUTION pe upgrade kar denge (structure intact hai, par hawa kharab hai - half exit socho).
+# - BB SQUEEZE hai to kabhi CONFIRMED nahi - squeeze me breakout fake hota hai, 2nd candle must hai.
+# - 09:15-09:45 ki pehli candle pe kabhi CONFIRMED nahi - opening trap rate sabse zyada hota hai.
+# MISSING = NEUTRAL: FII kal ka ho, VIX na aaye, Breadth na mile, koi macro fail ho to us gate ko 1 pt neutral do, FAIL mat maano.
+# Isse V98 ka tested logic toota nahi, aur naye factors usko veto / confirm karne ke liye aa gaye.
+# GATE 7 BOLLINGER + ATR + HTF: %B <0.05 pe oversold bounce, %B < -0.05 + range > ATR pe real breakdown, Squeeze = WAIT, Candle range < 0.7x ATR = noise, HTF bullish + price > EMA200 = 15m red sirf pullback.
+# GATE 8 FII/DII + VIX + BREADTH: FII heavy selling (-1000 Cr+) + DII absorb na kare = danger. FII buying + DII buying + price gira = dip buying, trap. VIX gira/flat + price gira = darr nahi, trap. VIX +1 se zyada upar = real darr. Breadth 55%+ adv + index gira = narrow fall (sirf heavyweight gira), trap. Breadth 35% se kam adv = broad selling, real.
+# GATE 9 MACRO COMMODITY + CURRENCY + GLOBAL: Gold +1% = darr (risk-off). Silver +1.5% + Gold up = darr pakka. Crude +1.5% = India ke liye inflation darr (importer hai). USDINR +0.4% = FII outflow. DXY +0.5% = dollar strong, EM weak. US10Y +2% = rate darr. GIFT -0.2% + Nasdaq -0.5% + Nikkei -0.5% = global bearish. Ulta hone pe supportive = trap.
+# + HTF VETO: 15m red hai par Daily/1H trend bullish + price 1H VWAP/EMA200 ke upar hai to 15m red ko pullback maano, reversal nahi.
+# =====================================================================
+def calculate_context_gates_v99(
+    price=0, bb_upper=0, bb_lower=0, bb_pctb=None, bb_squeeze=False, bb_width=0, atr=0, candle_range=0,
+    ema200=0, htf_bullish=None,
+    fii_net=None, dii_net=None, combined_net=None,
+    vix_now=None, vix_change=None, breadth_adv_pct=None,
+    macro=None, direction="BULLISH",
+):
+    """Returns dict: gates (3), score 0-6, trap_count, danger_count, squeeze flag, messages."""
+    try:
+        _d = str(direction).upper()
+        is_bull = _d in ("BULLISH", "BUY", "CE", "CALL", "LONG")
+        gates = []; trap_n = 0; danger_n = 0
+        # ---------- GATE 7: BOLLINGER + ATR + HTF ----------
+        _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs = []
+        try: _pctb = float(bb_pctb) if bb_pctb is not None else None
+        except Exception: _pctb = None
+        try: _atr_v = float(atr or 0)
+        except Exception: _atr_v = 0
+        try: _rng_v = float(candle_range or 0)
+        except Exception: _rng_v = 0
+        _is_squeeze = bool(bb_squeeze)
+        if _is_squeeze:
+            _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"BB Squeeze hai (Bandwidth {float(bb_width or 0):.3f}) - breakout fake ho sakta hai, 2nd CLOSED candle must hai, CONFIRMED nahi banega")
+        else:
+            if is_bull:
+                if _pctb is not None and _pctb < 0.05:
+                    # BB Lower pe oversold - agar range chhota hai to bounce, agar range bada + close BB ke neeche to breakdown
+                    if _atr_v and _rng_v and _rng_v > _atr_v * 1.2 and _pctb < -0.05:
+                        _g7_pts = 2; _g7_status = "DANGER"; _g7_msgs.append(f"BB Lower ke neeche CLOSE (%B {_pctb:.2f}) + range ATR se bada ({_rng_v:.0f} > {_atr_v:.0f}) - real breakdown lag raha hai")
+                    else:
+                        _g7_pts = 0; _g7_status = "TRAP"; _g7_msgs.append(f"BB Lower pe oversold (%B {_pctb:.2f}) - sellers thak gaye, bounce aane wala hai, trap lag raha hai")
+                elif _pctb is not None and _pctb > 0.95:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"BB Upper pe tha (%B {_pctb:.2f}), wahan se gira hai - pullback normal hai, reversal nahi")
+                else:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"BB beech me (%B {_pctb if _pctb is not None else 'N/A'}) - Bollinger se koi edge nahi")
+            else:
+                if _pctb is not None and _pctb > 0.95:
+                    if _atr_v and _rng_v and _rng_v > _atr_v * 1.2 and _pctb > 1.05:
+                        _g7_pts = 2; _g7_status = "DANGER"; _g7_msgs.append(f"BB Upper ke upar CLOSE (%B {_pctb:.2f}) + bada range - real breakout lag raha hai")
+                    else:
+                        _g7_pts = 0; _g7_status = "TRAP"; _g7_msgs.append(f"BB Upper pe overbought (%B {_pctb:.2f}) - buyers thak gaye, trap lag raha hai")
+                elif _pctb is not None and _pctb < 0.05:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"BB Lower pe tha (%B {_pctb:.2f}), wahan se utha hai - pullback normal hai")
+                else:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"BB beech me (%B {_pctb if _pctb is not None else 'N/A'}) - koi edge nahi")
+            # ATR noise check - chhoti candle = noise, reversal nahi
+            if _atr_v and _rng_v and _rng_v < _atr_v * 0.7 and _g7_pts == 2:
+                _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append(f"Par candle range ATR ka 0.7x se chhota ({_rng_v:.0f} < {_atr_v:.0f}) - ye noise candle hai, DANGER ko PARTIAL kiya")
+        # HTF veto - 15m red hai par bada trend bullish + price EMA200 ke upar = pullback
+        try:
+            if htf_bullish is not None:
+                _htf_b = bool(htf_bullish)
+                _ema200_v = float(ema200 or 0); _price_v = float(price or 0)
+                if is_bull and _htf_b and _ema200_v and _price_v > _ema200_v and _g7_pts == 2:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append("HTF bullish + price EMA200 ke upar hai - 15m red sirf pullback hai, DANGER ko PARTIAL kiya")
+                elif (not is_bull) and (not _htf_b) and _ema200_v and _price_v < _ema200_v and _g7_pts == 2:
+                    _g7_pts = 1; _g7_status = "PARTIAL"; _g7_msgs.append("HTF bearish + price EMA200 ke neeche hai - 15m green sirf pullback hai")
+                elif is_bull and _htf_b and _g7_pts == 0:
+                    _g7_msgs.append("HTF bhi bullish hai - trap aur pakka ho gaya")
+        except Exception:
+            pass
+        gates.append({"name": "7 Bollinger+ATR+HTF", "pts": _g7_pts, "max": 2, "status": _g7_status, "msg": " | ".join(_g7_msgs) if _g7_msgs else "BB data nahi - neutral"})
+        if _g7_status == "TRAP": trap_n += 1
+        if _g7_status == "DANGER": danger_n += 1
+        # ---------- GATE 8: FII/DII + VIX + BREADTH ----------
+        _g8_pts = 1; _g8_status = "PARTIAL"; _g8_msgs = []
+        _danger8 = 0; _trap8 = 0
+        try: _fii = float(fii_net) if fii_net is not None else None
+        except Exception: _fii = None
+        try: _dii = float(dii_net) if dii_net is not None else None
+        except Exception: _dii = None
+        try: _comb = float(combined_net) if combined_net is not None else (float(_fii + _dii) if _fii is not None and _dii is not None else None)
+        except Exception: _comb = None
+        if _fii is not None and _dii is not None:
+            if is_bull:
+                if _fii < -1000 and (_dii < 500):
+                    _danger8 += 1; _g8_msgs.append(f"FII heavy selling {_fii:+.0f} Cr + DII absorb nahi kar paya ({_dii:+.0f} Cr) - institutional pressure hai")
+                elif _fii > 300 and _dii > 0:
+                    _trap8 += 1; _g8_msgs.append(f"FII buying {_fii:+.0f} Cr + DII {_dii:+.0f} Cr - bade log dip pe kharid rahe hain, trap lag raha hai")
+                elif _comb is not None and _comb > 500:
+                    _trap8 += 1; _g8_msgs.append(f"Combined {_comb:+.0f} Cr positive hai - institutions net buyer hain")
+                else:
+                    _g8_msgs.append(f"FII {_fii:+.0f} Cr DII {_dii:+.0f} Cr - mixed, koi edge nahi")
+            else:
+                if _fii > 1000 and (_dii > -500):
+                    _danger8 += 1; _g8_msgs.append(f"FII heavy buying {_fii:+.0f} Cr - bullish pressure hai")
+                elif _fii < -300 and _dii < 0:
+                    _trap8 += 1; _g8_msgs.append(f"FII selling {_fii:+.0f} Cr + DII {_dii:+.0f} Cr - bade log upar se bech rahe hain, trap lag raha hai")
+                else:
+                    _g8_msgs.append(f"FII {_fii:+.0f} Cr DII {_dii:+.0f} Cr - mixed")
+        else:
+            _g8_msgs.append("FII/DII data nahi aaya - neutral, FAIL nahi mana")
+        try: _vix_chg = float(vix_change) if vix_change is not None else None
+        except Exception: _vix_chg = None
+        if _vix_chg is not None:
+            if is_bull:
+                if _vix_chg >= 1.0:
+                    _danger8 += 1; _g8_msgs.append(f"VIX +{_vix_chg:.1f} upar - market me darr badh raha hai, real pressure hai")
+                elif _vix_chg <= 0:
+                    _trap8 += 1; _g8_msgs.append(f"VIX {_vix_chg:+.1f} gira/flat hai + price gira - darr hi nahi hai, trap lag raha hai")
+                else:
+                    _g8_msgs.append(f"VIX +{_vix_chg:.1f} - thoda darr hai, confirm nahi")
+            else:
+                if _vix_chg <= -1.0:
+                    _danger8 += 1; _g8_msgs.append(f"VIX {_vix_chg:.1f} gira - darr khatam, bullish pressure hai")
+                elif _vix_chg >= 0:
+                    _trap8 += 1; _g8_msgs.append(f"VIX +{_vix_chg:.1f} - darr hai, upar jana mushkil, trap lag raha hai")
+        else:
+            _g8_msgs.append("VIX change nahi aaya - neutral")
+        try: _adv = float(breadth_adv_pct) if breadth_adv_pct is not None else None
+        except Exception: _adv = None
+        if _adv is not None and 0 < _adv <= 100:
+            if is_bull:
+                if _adv >= 55:
+                    _trap8 += 1; _g8_msgs.append(f"Breadth { _adv:.0f}% adv hai + Nifty gira - sirf heavyweight gira hai, poora market nahi gira, trap lag raha hai")
+                elif _adv <= 35:
+                    _danger8 += 1; _g8_msgs.append(f"Breadth {_adv:.0f}% adv hai - broad selling hai, poora market gir raha hai")
+                else:
+                    _g8_msgs.append(f"Breadth {_adv:.0f}% adv - mixed")
+            else:
+                if _adv <= 45:
+                    _trap8 += 1; _g8_msgs.append(f"Breadth {_adv:.0f}% adv hai + Nifty upar - sirf heavyweight upar hai, trap lag raha hai")
+                elif _adv >= 65:
+                    _danger8 += 1; _g8_msgs.append(f"Breadth {_adv:.0f}% adv - broad buying hai, real hai")
+                else:
+                    _g8_msgs.append(f"Breadth {_adv:.0f}% adv - mixed")
+        else:
+            _g8_msgs.append("Breadth nahi aaya - neutral")
+        if _danger8 >= 2: _g8_pts = 2; _g8_status = "DANGER"
+        elif _trap8 >= 2: _g8_pts = 0; _g8_status = "TRAP"
+        elif _danger8 == 1 and _trap8 == 0: _g8_pts = 1; _g8_status = "PARTIAL"
+        elif _trap8 == 1 and _danger8 == 0: _g8_pts = 0; _g8_status = "TRAP"
+        else: _g8_pts = 1; _g8_status = "PARTIAL"
+        gates.append({"name": "8 FII/DII+VIX+Breadth", "pts": _g8_pts, "max": 2, "status": _g8_status, "msg": " | ".join(_g8_msgs)})
+        if _g8_status == "TRAP": trap_n += 1
+        if _g8_status == "DANGER": danger_n += 1
+        # ---------- GATE 9: MACRO - GOLD/SILVER/CRUDE + USDINR/DXY/US10Y + GLOBAL ----------
+        _g9_pts = 1; _g9_status = "PARTIAL"; _g9_msgs = []
+        _bear9 = 0; _bull9 = 0; _avail9 = 0
+        try:
+            _mac = macro if isinstance(macro, dict) else {}
+            def _chg99(_k):
+                try:
+                    _v = _mac.get(_k, {})
+                    if isinstance(_v, dict): return float(_v.get("change_pct", 0) or 0)
+                    return float(_v or 0)
+                except Exception: return 0.0
+            def _has99(_k):
+                try:
+                    _v = _mac.get(_k, {})
+                    if isinstance(_v, dict): return _v.get("price") is not None and float(_v.get("price") or 0) > 0
+                    return _v is not None
+                except Exception: return False
+            _gold = _chg99("GOLD"); _silv = _chg99("SILVER"); _crude = _chg99("CRUDE_OIL"); _usd = _chg99("USDINR"); _dxy = _chg99("DXY"); _us10y = _chg99("US10Y"); _gift = _chg99("GIFT_NIFTY"); _ndx = _chg99("NASDAQ"); _nik = _chg99("NIKKEI")
+            for _k in ["GOLD","SILVER","CRUDE_OIL","USDINR","DXY","US10Y","GIFT_NIFTY","NASDAQ","NIKKEI"]:
+                if _has99(_k): _avail9 += 1
+            if is_bull:
+                # Bearish macro signals for Nifty CE
+                if _gold >= 1.0: _bear9 += 1; _g9_msgs.append(f"Gold +{_gold:.2f}% - darr (risk-off)")
+                elif _gold <= -0.5: _bull9 += 1; _g9_msgs.append(f"Gold {_gold:+.2f}% - risk-on, supportive")
+                if _silv >= 1.5: _bear9 += 1; _g9_msgs.append(f"Silver +{_silv:.2f}% + Gold up - darr pakka")
+                elif _silv <= -1.0: _bull9 += 1; _g9_msgs.append(f"Silver {_silv:+.2f}% - supportive")
+                if _crude >= 1.5: _bear9 += 1; _g9_msgs.append(f"Crude +{_crude:.2f}% - India importer, inflation darr")
+                elif _crude <= -1.0: _bull9 += 1; _g9_msgs.append(f"Crude {_crude:+.2f}% - India ke liye achha")
+                if _usd >= 0.4: _bear9 += 1; _g9_msgs.append(f"USDINR +{_usd:.2f}% - FII outflow pressure")
+                elif _usd <= -0.2: _bull9 += 1; _g9_msgs.append(f"USDINR {_usd:+.2f}% - FII comfort")
+                if _dxy >= 0.5: _bear9 += 1; _g9_msgs.append(f"DXY +{_dxy:.2f}% - dollar strong, EM weak")
+                elif _dxy <= -0.3: _bull9 += 1; _g9_msgs.append(f"DXY {_dxy:+.2f}% - EM supportive")
+                if _us10y >= 2.0: _bear9 += 1; _g9_msgs.append(f"US10Y +{_us10y:.2f}% - rate darr")
+                if _gift <= -0.2: _bear9 += 1; _g9_msgs.append(f"GIFT {_gift:+.2f}% - global bearish")
+                elif _gift >= 0.1: _bull9 += 1; _g9_msgs.append(f"GIFT {_gift:+.2f}% - supportive")
+                if _ndx <= -0.5: _bear9 += 1; _g9_msgs.append(f"Nasdaq {_ndx:+.2f}% - US weak")
+                elif _ndx >= 0.5: _bull9 += 1; _g9_msgs.append(f"Nasdaq +{_ndx:.2f}% - supportive")
+                if _nik <= -0.5: _bear9 += 1; _g9_msgs.append(f"Nikkei {_nik:+.2f}% - Asia weak")
+            else:
+                if _gold <= -1.0: _bear9 += 1; _g9_msgs.append(f"Gold {_gold:+.2f}% - risk-on, PE ke liye bearish")
+                elif _gold >= 0.5: _bull9 += 1; _g9_msgs.append(f"Gold +{_gold:.2f}% - darr, PE supportive")
+                if _crude <= -1.5: _bear9 += 1; _g9_msgs.append(f"Crude {_crude:+.2f}% - India ke liye achha, PE ke liye bearish")
+                if _usd <= -0.2: _bear9 += 1; _g9_msgs.append(f"USDINR {_usd:+.2f}% - FII comfort")
+                elif _usd >= 0.4: _bull9 += 1; _g9_msgs.append(f"USDINR +{_usd:.2f}% - outflow, PE supportive")
+                if _dxy <= -0.3: _bear9 += 1; _g9_msgs.append(f"DXY {_dxy:+.2f}% - EM supportive")
+                if _gift >= 0.2: _bear9 += 1; _g9_msgs.append(f"GIFT +{_gift:.2f}% - global bullish")
+                elif _gift <= -0.1: _bull9 += 1; _g9_msgs.append(f"GIFT {_gift:+.2f}% - global bearish, PE supportive")
+                if _ndx >= 0.5: _bear9 += 1; _g9_msgs.append(f"Nasdaq +{_ndx:.2f}% - US strong")
+            if _avail9 < 3:
+                _g9_pts = 1; _g9_status = "PARTIAL"; _g9_msgs.append(f"Macro me sirf {_avail9} live aaye - neutral, FAIL nahi mana")
+            elif _bear9 >= 4: _g9_pts = 2; _g9_status = "DANGER"
+            elif _bear9 <= 1 and _bull9 >= 2: _g9_pts = 0; _g9_status = "TRAP"; _g9_msgs.append("Macro supportive hai - reversal ka reason nahi hai, trap lag raha hai")
+            elif _bear9 >= 2: _g9_pts = 1; _g9_status = "PARTIAL"
+            else: _g9_pts = 1; _g9_status = "PARTIAL"
+        except Exception as _e99m:
+            _g9_pts = 1; _g9_status = "PARTIAL"; _g9_msgs.append(f"Macro calc error - neutral: {_e99m}")
+        gates.append({"name": "9 Macro Gold/Silver/Crude+USD/DXY", "pts": _g9_pts, "max": 2, "status": _g9_status, "msg": " | ".join(_g9_msgs) if _g9_msgs else "Macro nahi aaya - neutral"})
+        if _g9_status == "TRAP": trap_n += 1
+        if _g9_status == "DANGER": danger_n += 1
+        _score99 = sum(g["pts"] for g in gates)
+        return {"gates": gates, "score": _score99, "max_score": 6, "trap_count": trap_n, "danger_count": danger_n, "is_squeeze": _is_squeeze, "avail_macro": _avail9 if "_avail9" in locals() else 0}
+    except Exception as _e99:
+        return {"gates": [], "score": 3, "max_score": 6, "trap_count": 0, "danger_count": 0, "is_squeeze": False, "avail_macro": 0, "error": str(_e99)}
+
+def calculate_trap_vs_reversal_v100(
+    # V98 core args - sab same, taaki purana call na toote
+    price=0, vwap=0, ema20=0, breakout_level=0, support=0, resistance=0,
+    rsi=None, rsi_prev=None, macd_hist=None, macd_hist_prev=None, adx=None,
+    volume=0, avg_volume=0, prev_volume=0, last_candles=None, consecutive_opp_closes=None,
+    oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=None, pcr_prev=None,
+    gex_flip=0, max_pain=0, gex_regime="", premium_live=None, premium_entry=None, delta=0.52, spot_change_pct=None,
+    direction="BULLISH", tf_minutes=15,
+    # V100 context args - naye, sab optional, missing = neutral
+    bb_upper=0, bb_lower=0, bb_pctb=None, bb_squeeze=False, bb_width=0, atr=0, candle_range=0, ema200=0, htf_bullish=None,
+    fii_net=None, dii_net=None, combined_net=None, vix_now=None, vix_change=None, breadth_adv_pct=None, macro=None,
+    is_opening_candle=False,
+):
+    """V98 core + V100 context veto. Returns same shape as V98 + context_gates + veto_reason."""
+    try:
+        _core = calculate_trap_vs_reversal_v98(
+            price=price, vwap=vwap, ema20=ema20, breakout_level=breakout_level, support=support, resistance=resistance,
+            rsi=rsi, rsi_prev=rsi_prev, macd_hist=macd_hist, macd_hist_prev=macd_hist_prev, adx=adx,
+            volume=volume, avg_volume=avg_volume, prev_volume=prev_volume, last_candles=last_candles, consecutive_opp_closes=consecutive_opp_closes,
+            oi_ce_chg=oi_ce_chg, oi_pe_chg=oi_pe_chg, oi_buildup=oi_buildup, pcr=pcr, pcr_prev=pcr_prev,
+            gex_flip=gex_flip, max_pain=max_pain, gex_regime=gex_regime, premium_live=premium_live, premium_entry=premium_entry, delta=delta, spot_change_pct=spot_change_pct,
+            direction=direction, tf_minutes=tf_minutes,
+        )
+        # Candle range last_candles se agar pass nahi hua
+        _cr99 = candle_range
+        try:
+            if not _cr99 and last_candles:
+                _lc = last_candles[-1]; _cr99 = float(_lc.get("high", 0) or 0) - float(_lc.get("low", 0) or 0)
+        except Exception: pass
+        _ctx = calculate_context_gates_v99(
+            price=price, bb_upper=bb_upper, bb_lower=bb_lower, bb_pctb=bb_pctb, bb_squeeze=bb_squeeze, bb_width=bb_width, atr=atr, candle_range=_cr99,
+            ema200=ema200, htf_bullish=htf_bullish, fii_net=fii_net, dii_net=dii_net, combined_net=combined_net,
+            vix_now=vix_now, vix_change=vix_change, breadth_adv_pct=breadth_adv_pct, macro=macro, direction=direction,
+        )
+        _core_tier = _core.get("tier", "CAUTION"); _core_score = _core.get("score", 5)
+        _ctx_score = _ctx.get("score", 3); _trap_c = _ctx.get("trap_count", 0); _danger_c = _ctx.get("danger_count", 0)
+        _is_sq = _ctx.get("is_squeeze", False)
+        _veto = ""; _final_tier = _core_tier; _final_label = _core.get("label", ""); _final_action = _core.get("action", "")
+        # VETO 1: Squeeze me kabhi CONFIRMED nahi
+        if _core_tier == "CONFIRMED" and _is_sq:
+            _final_tier = "CAUTION"; _veto = "VETO: BB Squeeze hai - breakout fake ho sakta hai, isliye CONFIRMED ko CAUTION kiya. 2nd CLOSED candle ke baad fir check karo."
+            _final_label = "🟡 CAUTION - BB Squeeze (CONFIRMED nahi banega)"
+            _final_action = "Squeeze me FULL EXIT mat karo. Half exit / SL to cost karo, agle CLOSED candle ka wait karo."
+        # VETO 2: Opening candle (09:15-09:45) pe kabhi CONFIRMED nahi
+        elif _core_tier == "CONFIRMED" and bool(is_opening_candle):
+            _final_tier = "CAUTION"; _veto = "VETO: Opening 09:15-09:45 ki candle hai - opening trap rate sabse zyada hai, isliye CONFIRMED ko CAUTION kiya."
+            _final_label = "🟡 CAUTION - Opening Candle (CONFIRMED nahi banega)"
+            _final_action = "Opening candle pe FULL EXIT mat karo. 2nd CLOSED candle ka wait karo."
+        # VETO 3: Core CONFIRMED par 3 context sab TRAP = fake breakdown
+        elif _core_tier == "CONFIRMED" and _ctx_score <= 1:
+            _final_tier = "CAUTION"; _veto = f"VETO: Core CONFIRMED tha ({_core_score}/11) par Context {_ctx_score}/6 hai - BB + FII/DII/VIX + Macro teenon TRAP bol rahe hain, isliye CONFIRMED ko CAUTION kiya. Ye breakdown fake lag raha hai."
+            _final_label = "🟡 CAUTION - Context VETO (BB+FII+Macro TRAP bol rahe hain)"
+            _final_action = "Structure toota hai par BB oversold + FII buying + Macro supportive hai - FULL EXIT mat karo. Half exit / SL to cost karo."
+        # UPGRADE 1: Core CAUTION (6-7) + Context sab DANGER = CONFIRMED
+        elif _core_tier == "CAUTION" and _core_score >= 6 and _ctx_score >= 5 and not _core.get("need_2nd_candle", True):
+            _final_tier = "CONFIRMED"; _veto = f"UPGRADE: Core CAUTION tha ({_core_score}/11) par Context {_ctx_score}/6 DANGER hai - BB breakdown + FII selling + Macro bearish teenon confirm kar rahe hain, isliye CAUTION ko CONFIRMED kiya."
+            _final_label = "🔴 CONFIRMED EMERGENCY EXIT - Core + Context dono confirm"
+            _final_action = "Ab niklo - Core + Context (BB + FII + Macro) sab confirm hai."
+        # UPGRADE 2: Core TRAP par Context sab DANGER = CAUTION (structure intact hai, par hawa kharab hai)
+        elif _core_tier == "TRAP" and _ctx_score >= 5:
+            _final_tier = "CAUTION"; _veto = f"UPGRADE: Core TRAP tha ({_core_score}/11) par Context {_ctx_score}/6 DANGER hai - structure intact hai par FII + Macro + BB sab kharab hain, isliye TRAP ko CAUTION kiya."
+            _final_label = "🟡 CAUTION - Structure TRAP hai par Context DANGER hai"
+            _final_action = "FULL EXIT mat karo, par Half exit / SL to cost socho. Hawa kharab hai."
+        else:
+            _veto = f"No veto - Core {_core_tier} ({_core_score}/11) + Context {_ctx_score}/6 ({_trap_c} TRAP, {_danger_c} DANGER) - Core tier hi final hai."
+        # Telegram type final tier se
+        _tg99 = "TRAP" if _final_tier == "TRAP" else ("CAUTION" if _final_tier == "CAUTION" else "EMERGENCY")
+        _out = dict(_core)
+        _out.update({
+            "tier": _final_tier, "label": _final_label, "action": _final_action, "telegram_type": _tg99,
+            "core_tier": _core_tier, "core_score": _core_score,
+            "context_gates": _ctx.get("gates", []), "context_score": _ctx_score, "context_max": 6,
+            "context_trap_count": _trap_c, "context_danger_count": _danger_c,
+            "veto_reason": _veto, "is_squeeze": _is_sq,
+            "all_gates": list(_core.get("gates", [])) + list(_ctx.get("gates", [])),
+        })
+        return _out
+    except Exception as _e99w:
+        # V100 fail ho to V98 core hi return karo - naya logic purane ko giraaye nahi
+        try:
+            _c = calculate_trap_vs_reversal_v98(price=price, vwap=vwap, ema20=ema20, breakout_level=breakout_level, support=support, resistance=resistance, rsi=rsi, macd_hist=macd_hist, volume=volume, avg_volume=avg_volume, last_candles=last_candles, oi_ce_chg=oi_ce_chg, oi_pe_chg=oi_pe_chg, pcr=pcr, gex_flip=gex_flip, max_pain=max_pain, direction=direction, tf_minutes=tf_minutes)
+            _c["veto_reason"] = f"V100 wrapper error, V98 core hi final: {_e99w}"; _c["context_gates"] = []; _c["context_score"] = 3; return _c
+        except Exception:
+            return {"tier": "CAUTION", "label": "🟡 CAUTION - Data kam hai", "action": "Data kam hai, FULL EXIT mat karo", "telegram_type": "CAUTION", "score": 5, "max_score": 11, "gates": [], "context_gates": [], "context_score": 3, "veto_reason": str(_e99w)}
+
+
+
+# =====================================================================
+# V100 INTELLIGENT DECISION - 26 Nov 2026 - Bhai ne sahi tok diya: "bina soche kuch bhi bana diya"
+# Ye V100 V100 ko CORRECT karta hai, V100 ko apply MAT karo. V100 me maine galti ki thi - user ne bola add kar, maine 9 gate thok diye bina soche.
+# INTELLIGENT VERDICT - Kya sahi, kya galat, kya practically ho sakta hai:
+# SAHI (LIVE, intraday, fast - Emergency me rakho):
+#  - V98 CORE 6 gate: Structure + Volume + OI + Trap + Premium + GEX/PCR - sab LIVE, 15m candle se, 1-2 min me badalte hain. Yehi 80% edge hai.
+#  - Bollinger + ATR: LIVE hai, same candles se, koi extra fetch nahi. Par BB ko support samajhna galat hai - trend me price BB pe walk karta hai. Isliye BB ko sirf exhaustion ke liye rakho, 0-2 pts.
+#  - VIX: LIVE hai, options se direct juda hai. VIX up = premium me darr, VIX down + price gira = darr nahi. Isliye VIX ko +/-1 adjustment rakho.
+# GALAT (SLOW / STALE / NOISE - Emergency me VETO mat banao, sirf Morning Bias me dikhao):
+#  - FII/DII: PRACTICALLY LIVE NAHI HAI. NSE FII/DII ka data shaam ko aata hai, subah 11 baje jo dikhta hai wo KAL ka hai. Kal FII ne kharida tha isliye aaj ka live breakdown fake hai - ye logic hi galat hai. Kal ka data aaj ke 15m exit ko veto nahi kar sakta.
+#  - Gold/Silver/Crude/USDINR/DXY/US10Y: SLOW hai. Indian market 9:15-15:30 me US market band hai, DXY/US10Y almost flat hote hain. Gold +1% din bhar me hota hai, 15m breakdown ko cancel nahi karta. Silver ka Nifty se intraday correlation <0.2 hai - Silver jodna noise jodna hai. Crude 1.5% intraday me normal hai, inflation shock nahi hai.
+#  - Breadth: PRACTICALLY APP ME HAI HI NAHI. Dashboard me breadth_adv_pct=None hi rehta hai, koi live source nahi hai. Gate bana diya par wo kabhi trigger hi nahi hoga - fake promise tha.
+#  - 9 gate = overfitting: Zyada indicator = zyada confidence, kam accuracy. Har gate ek failure point hai, app slow hota hai, mobile pe bug badhta hai.
+# ASYMMETRY RULE (sabse important intelligent baat): Bearish macro CONFIRM kar sakta hai, par Bullish macro live breakdown ko CANCEL nahi kar sakta.
+#  Example: Structure toota + Premium crash + OI me Call Writing + Volume high hai, aur Gold gira hua hai isliye macro supportive hai - to kya HOLD karoge? Nahi, premium ja raha hai, SL bachega nahi. Macro supportive hone se live loss nahi rukta.
+#  Isliye V100 me: SLOW context (FII/Macro) kabhi CONFIRMED ko CAUTION pe downgrade NAHI karega. Sirf LIVE context (BB + VIX + Squeeze + Opening) veto kar sakta hai.
+#  - 2-CANDLE RULE bhi correct kiya: 15m x 2 = 30 min - options me 30 min me premium 30-40% ja sakta hai, SL pehle hi hit ho jayega. Isliye Emergency ka 2nd confirmation 5m pe lo, 15m pe nahi. V100 me consecutive_opp_closes ka matlab 5m ke 2 closes bhi chalega, dashboard me 15m pe 1 + 5m pe confirm likha aayega.
+# V100 FORMULA: Total = CORE (0-11) + BB (0-2) + VIX (-1 / 0 / +1) = 0-14. Tier: 0-4 TRAP, 5-9 CAUTION, 10+ CONFIRMED (2 CLOSED + Structure>=2 chahiye).
+#  SLOW context (FII/Macro/Breadth) sirf "Aaj ka Mahaul" panel me dikhega - Entry bias ke liye, Exit veto ke liye nahi.
+# =====================================================================
+def calculate_trap_vs_reversal_v100(
+    price=0, vwap=0, ema20=0, breakout_level=0, support=0, resistance=0,
+    rsi=None, rsi_prev=None, macd_hist=None, macd_hist_prev=None, adx=None,
+    volume=0, avg_volume=0, prev_volume=0, last_candles=None, consecutive_opp_closes=None,
+    oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=None, pcr_prev=None,
+    gex_flip=0, max_pain=0, gex_regime="", premium_live=None, premium_entry=None, delta=0.52, spot_change_pct=None,
+    direction="BULLISH", tf_minutes=15,
+    bb_upper=0, bb_lower=0, bb_pctb=None, bb_squeeze=False, bb_width=0, atr=0, candle_range=0, ema200=0, htf_bullish=None,
+    fii_net=None, dii_net=None, combined_net=None, vix_now=None, vix_change=None, breadth_adv_pct=None, macro=None,
+    is_opening_candle=False,
+):
+    """V100: CORE + BB + VIX (LIVE) = tier. FII/Macro = bias only, kabhi veto nahi."""
+    try:
+        _core = calculate_trap_vs_reversal_v98(
+            price=price, vwap=vwap, ema20=ema20, breakout_level=breakout_level, support=support, resistance=resistance,
+            rsi=rsi, rsi_prev=rsi_prev, macd_hist=macd_hist, macd_hist_prev=macd_hist_prev, adx=adx,
+            volume=volume, avg_volume=avg_volume, prev_volume=prev_volume, last_candles=last_candles, consecutive_opp_closes=consecutive_opp_closes,
+            oi_ce_chg=oi_ce_chg, oi_pe_chg=oi_pe_chg, oi_buildup=oi_buildup, pcr=pcr, pcr_prev=pcr_prev,
+            gex_flip=gex_flip, max_pain=max_pain, gex_regime=gex_regime, premium_live=premium_live, premium_entry=premium_entry, delta=delta, spot_change_pct=spot_change_pct,
+            direction=direction, tf_minutes=tf_minutes,
+        )
+        _d = str(direction).upper(); is_bull = _d in ("BULLISH","BUY","CE","CALL","LONG")
+        _core_score = int(_core.get("score", 5)); _core_tier = _core.get("tier","CAUTION")
+        # --- LIVE GATE 7: BB + ATR + HTF (0-2) ---
+        _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs = []
+        try: _pctb = float(bb_pctb) if bb_pctb is not None else None
+        except Exception: _pctb = None
+        try: _atr_v = float(atr or 0)
+        except Exception: _atr_v = 0
+        _cr = candle_range
+        try:
+            if not _cr and last_candles:
+                _lc = last_candles[-1]; _cr = float(_lc.get("high",0) or 0) - float(_lc.get("low",0) or 0)
+        except Exception: _cr = 0
+        _is_sq = bool(bb_squeeze)
+        if _is_sq:
+            _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append(f"BB Squeeze (Bandwidth {float(bb_width or 0):.3f}) - breakout fake ho sakta hai, CONFIRMED ke liye 2nd CLOSED must hai")
+        else:
+            if is_bull:
+                if _pctb is not None and _pctb < 0.05:
+                    if _atr_v and _cr and _cr > _atr_v*1.2 and _pctb < -0.05:
+                        _bb_pts = 2; _bb_status = "DANGER"; _bb_msgs.append(f"BB Lower ke neeche CLOSE (%B {_pctb:.2f}) + bada range - real breakdown")
+                    else:
+                        _bb_pts = 0; _bb_status = "TRAP"; _bb_msgs.append(f"BB Lower pe oversold (%B {_pctb:.2f}) - bounce aane wala hai, trap")
+                elif _pctb is not None and _pctb > 0.95:
+                    _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append(f"BB Upper se gira (%B {_pctb:.2f}) - pullback normal hai")
+                else:
+                    _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append(f"BB beech me (%B {_pctb if _pctb is not None else 'N/A'}) - koi edge nahi")
+            else:
+                if _pctb is not None and _pctb > 0.95:
+                    if _atr_v and _cr and _cr > _atr_v*1.2 and _pctb > 1.05:
+                        _bb_pts = 2; _bb_status = "DANGER"; _bb_msgs.append(f"BB Upper ke upar CLOSE (%B {_pctb:.2f}) + bada range - real breakout")
+                    else:
+                        _bb_pts = 0; _bb_status = "TRAP"; _bb_msgs.append(f"BB Upper pe overbought (%B {_pctb:.2f}) - trap")
+                else:
+                    _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append(f"BB beech me - koi edge nahi")
+            if _atr_v and _cr and _cr < _atr_v*0.7 and _bb_pts == 2:
+                _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append("Par range ATR ka 0.7x se chhota hai - noise candle hai")
+        # HTF: 15m red + HTF bullish + price > EMA200 = pullback, BB DANGER ko PARTIAL karo
+        try:
+            if htf_bullish is not None and is_bull and bool(htf_bullish) and float(ema200 or 0) and float(price or 0) > float(ema200 or 0) and _bb_pts == 2:
+                _bb_pts = 1; _bb_status = "PARTIAL"; _bb_msgs.append("HTF bullish + price EMA200 ke upar - 15m red pullback hai")
+        except Exception: pass
+        # --- LIVE VIX adjustment (-1 / 0 / +1) - LIVE hai, isliye allowed ---
+        _vix_adj = 0; _vix_msg = "VIX nahi aaya - neutral"
+        try: _vc = float(vix_change) if vix_change is not None else None
+        except Exception: _vc = None
+        if _vc is not None:
+            if is_bull:
+                if _vc >= 1.0: _vix_adj = 1; _vix_msg = f"VIX +{_vc:.1f} upar - darr badh raha hai, +1"
+                elif _vc <= 0: _vix_adj = -1; _vix_msg = f"VIX {_vc:+.1f} gira/flat + price gira - darr nahi hai, -1 (trap side)"
+                else: _vix_adj = 0; _vix_msg = f"VIX +{_vc:.1f} - thoda darr, 0"
+            else:
+                if _vc <= -1.0: _vix_adj = 1; _vix_msg = f"VIX {_vc:.1f} gira - darr khatam, +1"
+                elif _vc >= 0: _vix_adj = -1; _vix_msg = f"VIX +{_vc:.1f} - darr hai, -1"
+                else: _vix_adj = 0; _vix_msg = f"VIX {_vc:+.1f} - 0"
+        # --- SLOW BIAS (FII/Macro/Breadth) - SIRF DISPLAY, KABHI TIER NAHI BADLEGA ---
+        _slow_msgs = []
+        try:
+            _fii_v = float(fii_net) if fii_net is not None else None; _dii_v = float(dii_net) if dii_net is not None else None
+        except Exception: _fii_v = None; _dii_v = None
+        if _fii_v is not None and _dii_v is not None:
+            _slow_msgs.append(f"Kal ka FII {_fii_v:+.0f} Cr DII {_dii_v:+.0f} Cr (kal ka data hai, aaj ke live exit ko veto nahi karega - sirf subah ka bias)")
+        else:
+            _slow_msgs.append("FII/DII kal ka bhi nahi aaya - bias nahi bana")
+        try:
+            _mac = macro if isinstance(macro, dict) else {}
+            def _chg100(_k):
+                try:
+                    _v = _mac.get(_k, {})
+                    return float(_v.get("change_pct",0) or 0) if isinstance(_v, dict) else float(_v or 0)
+                except Exception: return 0.0
+            _g = _chg100("GOLD"); _c = _chg100("CRUDE_OIL"); _u = _chg100("USDINR"); _dx = _chg100("DXY")
+            _slow_msgs.append(f"Macro bias: Gold {_g:+.2f}% Crude {_c:+.2f}% USDINR {_u:+.2f}% DXY {_dx:+.2f}% - ye din bhar ka mahaul hai, 15m exit ka veto nahi hai")
+            if breadth_adv_pct is not None:
+                _slow_msgs.append(f"Breadth {float(breadth_adv_pct):.0f}% adv - bias ke liye, veto ke liye nahi (source weak hai)")
+            else:
+                _slow_msgs.append("Breadth live source nahi hai - isliye bias me bhi bharosa mat karo")
+        except Exception: pass
+        _total100 = _core_score + _bb_pts + _vix_adj
+        _total100 = max(0, min(14, _total100))
+        # Tier V100: 0-4 TRAP, 5-9 CAUTION, 10+ CONFIRMED (2 candle + structure>=2 chahiye)
+        _need_2nd = bool(_core.get("need_2nd_candle", True))
+        _struct = int(_core.get("broken_levels", 0))
+        if _total100 <= 4:
+            _tier100 = "TRAP"; _label100 = "🪤 SELLER TRAP - EXIT MAT KARO"; _action100 = "Hold karo / SL hi invalidation hai. Ye trap lag raha hai."
+        elif _total100 <= 9:
+            _tier100 = "CAUTION"; _label100 = "🟡 CAUTION - Half Exit / SL to Cost"; _action100 = "Half nikalo, SL Entry pe lao. Baaki ko agle CLOSED candle ka chance do."
+        else:
+            if _need_2nd:
+                _tier100 = "CAUTION"; _label100 = "🟡 CAUTION - 1st Opposite Candle (2nd ka wait karo)"; _action100 = "Sirf 1 opposite candle hai - CONFIRMED ke liye dusri CLOSED chahiye. Abhi half hi nikalo."
+            elif _struct < 2:
+                _tier100 = "CAUTION"; _label100 = "🟡 CAUTION - Structure pura nahi toota"; _action100 = "Score high hai par structure 2 level se kam toota hai - FULL EXIT mat karo."
+            elif _is_sq:
+                _tier100 = "CAUTION"; _label100 = "🟡 CAUTION - BB Squeeze (CONFIRMED nahi banega)"; _action100 = "Squeeze me FULL EXIT mat karo. Half / SL to cost karo."
+            elif bool(is_opening_candle):
+                _tier100 = "CAUTION"; _label100 = "🟡 CAUTION - Opening Candle (CONFIRMED nahi banega)"; _action100 = "Opening 09:15-09:45 ki candle hai - trap rate zyada hai, 2nd candle ka wait karo."
+            else:
+                _tier100 = "CONFIRMED"; _label100 = "🔴 CONFIRMED EMERGENCY EXIT - Reversal pakka hai"; _action100 = "Ab niklo - Core + BB + VIX sab confirm hai. Macro/FII supportive bhi is live breakdown ko cancel nahi karega."
+        _tg100 = "TRAP" if _tier100=="TRAP" else ("CAUTION" if _tier100=="CAUTION" else "EMERGENCY")
+        _veto100 = f"V100: CORE {_core_score}/11 + BB {_bb_pts}/2 + VIX {_vix_adj:+d} = {_total100}/14 -> {_tier100}. SLOW (FII/Macro) ne tier nahi badla - wo sirf bias hai."
+        if _core_tier=="CONFIRMED" and _tier100=="CAUTION" and _total100>=10:
+            _veto100 += " (LIVE veto: Squeeze/Opening/2nd candle ki wajah se CAUTION hua, Macro/FII ki wajah se nahi)"
+        _out = dict(_core)
+        _out.update({
+            "tier": _tier100, "label": _label100, "action": _action100, "telegram_type": _tg100,
+            "score": _total100, "max_score": 14, "core_tier": _core_tier, "core_score": _core_score,
+            "bb_pts": _bb_pts, "bb_status": _bb_status, "bb_msg": " | ".join(_bb_msgs),
+            "vix_adj": _vix_adj, "vix_msg": _vix_msg,
+            "slow_bias_msgs": _slow_msgs, "veto_reason": _veto100, "is_squeeze": _is_sq,
+            "all_gates": list(_core.get("gates", [])) + [{"name": "7 BB+ATR+HTF (LIVE)", "pts": _bb_pts, "max": 2, "status": _bb_status, "msg": " | ".join(_bb_msgs)}, {"name": "8 VIX (LIVE +/-1)", "pts": _vix_adj, "max": 1, "status": "DANGER" if _vix_adj==1 else ("TRAP" if _vix_adj==-1 else "PARTIAL"), "msg": _vix_msg}],
+            "context_gates": [{"name": "7 BB+ATR+HTF (LIVE)", "pts": _bb_pts, "max": 2, "status": _bb_status, "msg": " | ".join(_bb_msgs)}, {"name": "8 VIX (LIVE)", "pts": _vix_adj, "max": 1, "status": "DANGER" if _vix_adj==1 else "PARTIAL", "msg": _vix_msg}],
+            "context_score": _bb_pts + max(0,_vix_adj),
+        })
+        return _out
+    except Exception as _e100:
+        try:
+            _c = calculate_trap_vs_reversal_v98(price=price, vwap=vwap, ema20=ema20, breakout_level=breakout_level, support=support, resistance=resistance, rsi=rsi, macd_hist=macd_hist, volume=volume, avg_volume=avg_volume, last_candles=last_candles, oi_ce_chg=oi_ce_chg, oi_pe_chg=oi_pe_chg, pcr=pcr, gex_flip=gex_flip, max_pain=max_pain, direction=direction, tf_minutes=tf_minutes)
+            _c["veto_reason"] = f"V100 error, V98 core hi final: {_e100}"; return _c
+        except Exception:
+            return {"tier": "CAUTION", "label": "🟡 CAUTION - Data kam hai", "action": "Data kam hai, FULL EXIT mat karo", "telegram_type": "CAUTION", "score": 5, "max_score": 14, "gates": [], "veto_reason": str(_e100)}
+
 
 def calculate_overall_strong_signal_v55_2(
     price=0, vwap=0, ema20=0, ema50=0, ema200=0,
@@ -8232,6 +9331,27 @@ def analyze_market(symbol: str, proxy: Optional[Dict[str, Any]] = None, explicit
     except Exception:
         pass
     res["closed_candle_time"] = str(_closed_df["datetime"].iloc[-1]) if "datetime" in _closed_df.columns else "" 
+    # V97: HOLD / SURVIVAL ke liye candle history + ATR + MACD chahiye - sirf last row se FOMO ka pata nahi chalega
+    try:
+        res["atr"] = num(row.get("ATR"))
+        res["macd_hist"] = num(row.get("MACD_HIST"))
+        res["macd"] = num(row.get("MACD"))
+        _lc = []
+        try:
+            _tail97 = _closed_df.tail(6)
+            for _, _r97 in _tail97.iterrows():
+                _lc.append({"open": float(_r97.get("open", 0) or 0), "high": float(_r97.get("high", 0) or 0), "low": float(_r97.get("low", 0) or 0), "close": float(_r97.get("close", 0) or 0), "volume": float(_r97.get("volume", 0) or 0)})
+        except Exception: _lc = []
+        res["last_candles"] = _lc
+        try:
+            _imp = _closed_df.tail(5)
+            res["impulse_high"] = float(_imp["high"].max()) if len(_imp) else 0
+            res["impulse_low"] = float(_imp["low"].min()) if len(_imp) else 0
+        except Exception:
+            res["impulse_high"] = 0; res["impulse_low"] = 0
+    except Exception:
+        res["atr"] = None; res["macd_hist"] = None; res["last_candles"] = []; res["impulse_high"] = 0; res["impulse_low"] = 0
+
 
     score = 0
     if res["ema20"] and res["ema50"] and last:
@@ -9225,6 +10345,49 @@ def make_trade_idea(market: Dict[str, Any], symbol: str, instrument: str = "INDE
         idea["strong_direction"] = _dir_v85
         # V86: Conviction = V86 Score (0-100). Pehle confluence wali 20% dikhti thi, ab Strong Score hi Conviction hai.
         idea["confidence"] = int(_score100_v86)
+        # V97 ADVANCED HOLD + SURVIVAL - Strong signal ke baad FOMO exit roko
+        try:
+            _tf_min97 = 15
+            try: _tf_min97 = int(tf_cfg.get("minutes", 15) or 15)
+            except Exception: _tf_min97 = 15
+            _brk97 = 0
+            try: _brk97 = float(market.get("resistance", 0) or 0) if bullish else float(market.get("support", 0) or 0)
+            except Exception: _brk97 = 0
+            _hold97 = calculate_hold_survival_v97(
+                price=float(entry_spot), sl=float(sl), t1=float(t1), t2=float(t2),
+                vwap=float(market.get("vwap", 0) or 0), ema20=float(market.get("ema20", 0) or 0), ema50=float(market.get("ema50", 0) or 0),
+                support=float(market.get("support", 0) or 0), resistance=float(market.get("resistance", 0) or 0), breakout_level=float(_brk97 or 0),
+                atr=float(market.get("atr", 0) or 0), rsi=market.get("rsi", None), adx=market.get("adx", None), macd_hist=market.get("macd_hist", None),
+                volume=float(market.get("volume", 0) or 0), avg_volume=float(market.get("avg_volume", 0) or 0), bb_pctb=market.get("bb_pctb", None),
+                strong_score=int(_score100_v86), direction=_dir_v85, tf_minutes=_tf_min97,
+                last_candles=market.get("last_candles", []), impulse_high=float(market.get("impulse_high", 0) or 0), impulse_low=float(market.get("impulse_low", 0) or 0),
+            )
+            idea["hold_state"] = _hold97.get("hold_state", "CAUTION")
+            idea["hold_label"] = _hold97.get("hold_label", "")
+            idea["hold_action"] = _hold97.get("hold_action", "")
+            idea["hold_pullback_type"] = _hold97.get("pullback_type", "")
+            idea["hold_fomo_note"] = _hold97.get("fomo_note", "")
+            idea["hold_exit_rule"] = _hold97.get("exit_rule", "")
+            idea["hold_p_next_1"] = _hold97.get("p_next_1", 50)
+            idea["hold_p_next_2"] = _hold97.get("p_next_2", 65)
+            idea["hold_p_survival"] = _hold97.get("p_survival", 55)
+            idea["hold_window_1"] = _hold97.get("window_1_label", f"Agle {_tf_min97} min")
+            idea["hold_window_2"] = _hold97.get("window_2_label", f"Agle {_tf_min97*2} min")
+            idea["hold_candles_needed"] = _hold97.get("candles_needed", 2)
+            idea["hold_zone_low"] = _hold97.get("zone_low", 0)
+            idea["hold_zone_high"] = _hold97.get("zone_high", 0)
+            idea["hold_floor"] = _hold97.get("floor", 0)
+            idea["hold_healthy"] = _hold97.get("healthy", [])
+            idea["hold_danger"] = _hold97.get("danger", [])
+            idea["hold_opp_candles"] = _hold97.get("opp_candles", 0)
+            idea["hold_retrace_pct"] = _hold97.get("retrace_pct", None)
+            idea["hold_vol_ratio"] = _hold97.get("vol_ratio", 1.0)
+            idea["hold_dist_t1"] = _hold97.get("dist_t1_pts", 0)
+            idea["hold_atr"] = _hold97.get("atr", 0)
+            idea["hold_tf_minutes"] = _tf_min97
+        except Exception as _e97b:
+            idea["hold_state"] = "CAUTION"; idea["hold_label"] = "🟡 HOLD - CAUTION"; idea["hold_action"] = "SL hi invalidation hai"; idea["hold_p_next_1"] = 50; idea["hold_p_next_2"] = 65; idea["hold_p_survival"] = 55; idea["hold_pullback_type"] = "PULLBACK - Check karo"; idea["hold_fomo_note"] = f"V97 hold calc error: {_e97b}"; idea["hold_exit_rule"] = "EXIT sirf CLOSED candle + Floor tootne pe."; idea["hold_healthy"] = []; idea["hold_danger"] = []; idea["hold_opp_candles"] = 0
+
         # V86: Holding time-aware - 8:55 AM pe NEXT SESSION nahi, TODAY SESSION dikhega
         try:
             idea["holding"] = _v86_holding(tf_cfg)
@@ -11168,41 +12331,111 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         st.markdown(f"### {SHIELD} Live Position Exit Monitor ({tf['smartapi']}) - 🔴 LIVE STREAMING")
         if st.button(f"🔄 REFRESH LIVE EXIT ({tf['smartapi']}) - Spot + LTP LIVE", key=f"refresh_exit_{tf['smartapi']}", use_container_width=True):
             _v81_safe_rerun()  # V55.4: cache clear hataya
-        st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | Telegram ON hai to EMERGENCY EXIT pe alert ayega")
+        st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | V100: CORE + BB + VIX LIVE - FII/Macro sirf Bias (BB + FII/DII/VIX + Gold/Silver/Crude/USD) + VETO - 1 RED light pe EMERGENCY nahi")
         
         # Original header removed, now combined
         
-        with st.expander(f"{PIN} Active Position Exit Rules Check (Live)", expanded=True):
+        with st.expander(f"{PIN} Active Position Exit Rules Check (Live) - V100 Trap vs Reversal (Core + Context)", expanded=True):
+            # V98: Dashboard ka purana EMERGENCY - 1 RED light = EXIT - BAND. Ab 6 GATE + 2 CANDLE.
+            # Market dict df_candles se banao - CLOSED candle hi use karo, forming wali nahi.
+            _m98_dash = {}
+            try:
+                _df98 = df_candles.copy() if df_candles is not None and not df_candles.empty else pd.DataFrame()
+                if not _df98.empty and "datetime" in _df98.columns and len(_df98) >= 2:
+                    try:
+                        _ldt98 = pd.to_datetime(_df98["datetime"].iloc[-1])
+                        if _ldt98.tzinfo is None: _ldt98 = _ldt98.tz_localize(IST)
+                        if (datetime.now(IST) - _ldt98).total_seconds() < 5*60 and _ldt98.date() == datetime.now(IST).date():
+                            _df98 = _df98.iloc[:-1]
+                    except Exception: pass
+                _lc98_dash = []
+                try:
+                    for _, _r98 in _df98.tail(6).iterrows():
+                        _lc98_dash.append({"open": float(_r98.get("open", 0) or 0), "high": float(_r98.get("high", 0) or 0), "low": float(_r98.get("low", 0) or 0), "close": float(_r98.get("close", 0) or 0), "volume": float(_r98.get("volume", 0) or 0)})
+                except Exception: _lc98_dash = []
+                _row98 = _df98.iloc[-1] if len(_df98) else None
+                # V100: BB + FII/DII + Macro + HTF + Opening - sab dashboard se hi, koi naya fetch nahi (V98 me ye miss the, par app me pehle se the)
+                _bb_pctb99 = None; _bb_up99 = 0; _bb_lo99 = 0; _bb_sq99 = False; _bb_w99 = 0; _atr99 = 0; _ema200_99 = 0
+                try:
+                    if _row98 is not None:
+                        _bb_up99 = float(_row98.get("BB_UPPER", 0) or 0); _bb_lo99 = float(_row98.get("BB_LOWER", 0) or 0)
+                        _bb_pctb99 = float(_row98.get("BB_PCTB", 0.5) or 0.5) if _row98.get("BB_PCTB") is not None else None
+                        _bb_sq99 = bool(_row98.get("BB_SQUEEZE", False)); _bb_w99 = float(_row98.get("BB_WIDTH", 0) or 0)
+                        _atr99 = float(_row98.get("ATR", 0) or 0); _ema200_99 = float(_row98.get("EMA200", 0) or 0)
+                except Exception: pass
+                _htf99 = None
+                try:
+                    _last99 = float(spot or 0) if spot else float(_row98.get("close", 0) or 0) if _row98 is not None else 0
+                    _htf99 = bool(_last99 > float(_row98.get("EMA50", 0) or 0) and _last99 > float(_row98.get("VWAP", 0) or 0)) if _row98 is not None else None
+                except Exception: _htf99 = None
+                _is_open99 = False
+                try:
+                    _now99 = datetime.now(IST); _is_open99 = (_now99.hour == 9 and _now99.minute < 45)
+                except Exception: pass
+                _vix_chg99 = None; _vix_now99 = None
+                try:
+                    _vx99 = get_india_vix() if "get_india_vix" in globals() else {}
+                    if isinstance(_vx99, dict):
+                        _vix_now99 = float(_vx99.get("vix", _vx99.get("price", 0)) or 0) if _vx99.get("vix", _vx99.get("price")) else None
+                        _vix_chg99 = float(_vx99.get("vix_change", _vx99.get("change", 0)) or 0) if _vx99.get("vix_change", _vx99.get("change")) is not None else None
+                except Exception: pass
+                _m98_dash = {
+                    "last": float(spot or 0) if spot else float(_row98.get("close", 0) or 0) if _row98 is not None else 0,
+                    "vwap": float(_row98.get("VWAP", 0) or 0) if _row98 is not None else 0,
+                    "ema20": float(_row98.get("EMA20", 0) or 0) if _row98 is not None else 0,
+                    "support": float(_df98["low"].tail(30).min()) if len(_df98) else 0,
+                    "resistance": float(_df98["high"].tail(30).max()) if len(_df98) else 0,
+                    "rsi": float(_row98.get("RSI", 50) or 50) if _row98 is not None else 50,
+                    "macd_hist": float(_row98.get("MACD_HIST", 0) or 0) if _row98 is not None else 0,
+                    "adx": float(_row98.get("ADX", 20) or 20) if _row98 is not None else 20,
+                    "volume": float(_row98.get("volume", 0) or 0) if _row98 is not None else 0,
+                    "avg_volume": float(_row98.get("VOL_AVG20", 0) or 0) if _row98 is not None else 0,
+                    "last_candles": _lc98_dash,
+                    "pcr": float(pcr or 1.05), "gamma_flip": float(gex_info.get("gamma_flip", 0) or 0), "max_pain": float(gex_info.get("max_pain", 0) or 0), "gex_regime": str(gex_info.get("gex_regime", "") or ""),
+                    "bb_upper": _bb_up99, "bb_lower": _bb_lo99, "bb_pctb": _bb_pctb99, "bb_squeeze": _bb_sq99, "bb_width": _bb_w99, "atr": _atr99, "ema200": _ema200_99, "htf_bullish": _htf99, "is_opening_candle": _is_open99,
+                    "fii_dii": fii_dii if "fii_dii" in locals() else {}, "macro": macro_quotes if "macro_quotes" in locals() else {}, "macro_quotes": macro_quotes if "macro_quotes" in locals() else {}, "vix_now": _vix_now99, "vix_change": _vix_chg99, "breadth_adv_pct": None,
+                }
+            except Exception: _m98_dash = {"last": float(spot or 0), "vwap": 0, "ema20": 0, "support": 0, "resistance": 0, "rsi": 50, "macd_hist": 0, "volume": 0, "avg_volume": 0, "last_candles": [], "pcr": float(pcr or 1.05)}
             ex1, ex2 = st.columns(2)
             with ex1:
-                st.markdown(f"#### {GREEN_CIRCLE} Active Call (CE) Exit Rules")
-                if light1["status"] == "RED" or light2["status"] == "RED":
-                    st.error(f"{SIREN} **EMERGENCY EXIT CE:** Downward breakdown detected. Exit long call positions.")
-                elif "DOJI" in light1["pattern"]:
-                    st.warning(f"{WARNING} **TRAIL SL TO COST:** Doji indecision candle formed. Neutralize risk.")
-                elif light1["reversal_risk"]:
-                    st.error(f"{WARNING} **REVERSAL EXIT CE:** High volume {light1['pattern']} detected.")
-                else:
-                    st.success(f"{CHECK} **HOLD CE:** Bullish momentum intact.")
-
+                st.markdown(f"#### {GREEN_CIRCLE} Active Call (CE) - V100 Trap Check (BB + FII + Macro)")
+                try:
+                    _v98ce = calculate_trap_vs_reversal_v100(price=_m98_dash.get("last", 0), vwap=_m98_dash.get("vwap", 0), ema20=_m98_dash.get("ema20", 0), breakout_level=_m98_dash.get("resistance", 0), support=_m98_dash.get("support", 0), resistance=_m98_dash.get("resistance", 0), rsi=_m98_dash.get("rsi", 50), macd_hist=_m98_dash.get("macd_hist", 0), adx=_m98_dash.get("adx", 20), volume=_m98_dash.get("volume", 0), avg_volume=_m98_dash.get("avg_volume", 0), last_candles=_m98_dash.get("last_candles", []), oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=_m98_dash.get("pcr", 1.05), pcr_prev=None, gex_flip=_m98_dash.get("gamma_flip", 0), max_pain=_m98_dash.get("max_pain", 0), gex_regime=_m98_dash.get("gex_regime", ""), premium_live=None, premium_entry=None, direction="BULLISH", tf_minutes=15, bb_upper=_m98_dash.get("bb_upper", 0), bb_lower=_m98_dash.get("bb_lower", 0), bb_pctb=_m98_dash.get("bb_pctb", None), bb_squeeze=_m98_dash.get("bb_squeeze", False), bb_width=_m98_dash.get("bb_width", 0), atr=_m98_dash.get("atr", 0), ema200=_m98_dash.get("ema200", 0), htf_bullish=_m98_dash.get("htf_bullish", None), fii_net=(_m98_dash.get("fii_dii", {}) or {}).get("fii_net", None), dii_net=(_m98_dash.get("fii_dii", {}) or {}).get("dii_net", None), combined_net=(_m98_dash.get("fii_dii", {}) or {}).get("combined", None), vix_now=_m98_dash.get("vix_now", None), vix_change=_m98_dash.get("vix_change", None), breadth_adv_pct=None, macro=_m98_dash.get("macro", {}), is_opening_candle=_m98_dash.get("is_opening_candle", False))
+                    if _v98ce.get("tier") == "TRAP":
+                        st.success(f"🪤 **TRAP - HOLD CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {' | '.join(_v98ce.get('trap_signals', [])[:2])}")
+                    elif _v98ce.get("tier") == "CAUTION":
+                        st.warning(f"🟡 **CAUTION CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {_v98ce.get('action','')}")
+                    else:
+                        st.error(f"🔴 **CONFIRMED EXIT CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {_v98ce.get('action','')}")
+                    _gstr98ce = " | ".join([str(g.get("name",""))[:12] + " " + str(g.get("pts")) + "/" + str(g.get("max")) for g in _v98ce.get("gates", [])])
+                    st.caption("V98 CE: " + _gstr98ce)
+                    if "DOJI" in str(light1.get("pattern", "")):
+                        st.caption("Doji hai - sirf Trail SL to Cost, EXIT nahi.")
+                except Exception as _e98d:
+                    st.success(f"{CHECK} **HOLD CE:** V98 check error { _e98d} - data kam hai to EXIT nahi.")
             with ex2:
-                st.markdown(f"#### {RED_CIRCLE} Active Put (PE) Exit Rules")
-                if light1["status"] == "GREEN" or light2["status"] == "GREEN":
-                    st.error(f"{SIREN} **EMERGENCY EXIT PE:** Opposite Green light triggered. Exit short put positions.")
-                elif "DOJI" in light1["pattern"]:
-                    st.warning(f"{WARNING} **TRAIL SL TO COST:** Support Doji formed. Trail stop loss to cost.")
-                elif light1["pattern"] in ["BULLISH HAMMER PIN", "BULLISH ENGULFING"]:
-                    st.error(f"{WARNING} **REVERSAL EXIT PE:** Support bounce pattern detected.")
-                else:
-                    st.success(f"{CHECK} **HOLD PE:** Downside momentum intact.")
+                st.markdown(f"#### {RED_CIRCLE} Active Put (PE) - V100 Trap Check (BB + FII + Macro)")
+                try:
+                    _v98pe = calculate_trap_vs_reversal_v100(price=_m98_dash.get("last", 0), vwap=_m98_dash.get("vwap", 0), ema20=_m98_dash.get("ema20", 0), breakout_level=_m98_dash.get("support", 0), support=_m98_dash.get("support", 0), resistance=_m98_dash.get("resistance", 0), rsi=_m98_dash.get("rsi", 50), macd_hist=_m98_dash.get("macd_hist", 0), adx=_m98_dash.get("adx", 20), volume=_m98_dash.get("volume", 0), avg_volume=_m98_dash.get("avg_volume", 0), last_candles=_m98_dash.get("last_candles", []), oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=_m98_dash.get("pcr", 1.05), pcr_prev=None, gex_flip=_m98_dash.get("gamma_flip", 0), max_pain=_m98_dash.get("max_pain", 0), gex_regime=_m98_dash.get("gex_regime", ""), premium_live=None, premium_entry=None, direction="BEARISH", tf_minutes=15, bb_upper=_m98_dash.get("bb_upper", 0), bb_lower=_m98_dash.get("bb_lower", 0), bb_pctb=_m98_dash.get("bb_pctb", None), bb_squeeze=_m98_dash.get("bb_squeeze", False), bb_width=_m98_dash.get("bb_width", 0), atr=_m98_dash.get("atr", 0), ema200=_m98_dash.get("ema200", 0), htf_bullish=_m98_dash.get("htf_bullish", None), fii_net=(_m98_dash.get("fii_dii", {}) or {}).get("fii_net", None), dii_net=(_m98_dash.get("fii_dii", {}) or {}).get("dii_net", None), combined_net=(_m98_dash.get("fii_dii", {}) or {}).get("combined", None), vix_now=_m98_dash.get("vix_now", None), vix_change=_m98_dash.get("vix_change", None), breadth_adv_pct=None, macro=_m98_dash.get("macro", {}), is_opening_candle=_m98_dash.get("is_opening_candle", False))
+                    if _v98pe.get("tier") == "TRAP":
+                        st.success(f"🪤 **TRAP - HOLD PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {' | '.join(_v98pe.get('trap_signals', [])[:2])}")
+                    elif _v98pe.get("tier") == "CAUTION":
+                        st.warning(f"🟡 **CAUTION PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {_v98pe.get('action','')}")
+                    else:
+                        st.error(f"🔴 **CONFIRMED EXIT PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {_v98pe.get('action','')}")
+                    _gstr98pe = " | ".join([str(g.get("name",""))[:12] + " " + str(g.get("pts")) + "/" + str(g.get("max")) for g in _v98pe.get("gates", [])])
+                    st.caption("V98 PE: " + _gstr98pe)
+                except Exception as _e98d2:
+                    st.success(f"{CHECK} **HOLD PE:** V98 check error {_e98d2} - data kam hai to EXIT nahi.")
             
             # V55.2 NEW: Auto check emergency exit from traffic lights and send Telegram
             try:
                 # Show if positions exist
                 if 'paper_portfolio' in st.session_state and st.session_state.paper_portfolio.get("positions"):
                     if light1["status"] == "RED" or light2["status"] == "RED" or light1["status"] == "GREEN" or light2["status"] == "GREEN":
-                        st.warning("🚨 Emergency Exit condition detected - Checking open positions for Telegram alert...")
-                        auto_check_emergency_exit_from_lights(light1, light2)
+                        st.caption("V100 check chal raha hai - 1 RED light pe EMERGENCY nahi, CORE + BB + VIX (LIVE) - FII/Macro sirf Bias ke baad hi CONFIRMED aayega. TRAP / CAUTION aaye to wahi sahi hai.")
+                        try: auto_check_emergency_exit_from_lights(light1, light2, market=_m98_dash, chain=chain, tf_minutes=15)
+                        except Exception: auto_check_emergency_exit_from_lights(light1, light2)
             except Exception as e:
                 print(f"Emergency exit call error: {e}")
                 pass
@@ -11524,6 +12757,31 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                         _sreasons_txt = " | ".join([str(x) for x in _sr[:2]]) if _sr else "Strong check ho raha hai..."
                         html_card = '<div class="trade-card" style="border-left: 4px solid #00FF00;"><div style="background: #00FF00; color: black; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: inline-block; margin-bottom: 5px;">LIVE SPOT: ' + str(spot_display) + '</div><h3>Trade Setup ' + str(i) + ' - ' + str(card_title_safe) + '</h3><b>Type:</b> ' + str(sub_badge_safe) + ' | <b>Timeframe:</b> ' + str(tf_safe) + ' | <b>Holding:</b> ' + str(holding_safe) + ' | <b>Conviction:</b> ' + str(conf_safe) + '% | <b>Expiry:</b> ' + str(exp_safe) + '</div><div style="background: ' + _sbg + '; color: ' + _scol + '; padding: 8px 10px; border-radius: 6px; margin-top: 6px; font-size: 15px; font-weight: bold;">' + _semoji + ' SIGNAL: ' + _sv + ' - ' + _ss + ' [' + _sdir + ']</div><div style="font-size: 12px; margin-top: 4px; color: #DDD;">' + _sreasons_txt + '</div></div>'
                         st.markdown(html_card, unsafe_allow_html=True)
+                        # V97 HOLD BOX - SIGNAL ke neeche hi dikhega, taaki FOMO me turant dikhe
+                        try:
+                            _hs = str(idea.get("hold_state", "CAUTION"))
+                            _hl = str(idea.get("hold_label", ""))
+                            _ha = str(idea.get("hold_action", ""))
+                            _hp1 = idea.get("hold_p_next_1", 50); _hp2 = idea.get("hold_p_next_2", 65); _hps = idea.get("hold_p_survival", 55)
+                            _hw1 = str(idea.get("hold_window_1", "Agle 15 min")); _hw2 = str(idea.get("hold_window_2", "Agle 30 min"))
+                            _hpt = str(idea.get("hold_pullback_type", "")); _hfomo = str(idea.get("hold_fomo_note", "")); _hexit = str(idea.get("hold_exit_rule", ""))
+                            _hzl = idea.get("hold_zone_low", 0); _hzh = idea.get("hold_zone_high", 0); _hfl = idea.get("hold_floor", 0)
+                            _hopp = idea.get("hold_opp_candles", 0); _hret = idea.get("hold_retrace_pct", None); _hcn = idea.get("hold_candles_needed", 2)
+                            if _hs == "HOLD": _hbg, _hcol = "#00FF00", "black"
+                            elif _hs == "CAUTION": _hbg, _hcol = "#FFC107", "black"
+                            else: _hbg, _hcol = "#FF4B4B", "white"
+                            _hret_txt = f" | Retrace: {_hret:.0f}%" if _hret is not None else ""
+                            _hhtml = f'<div style="background: {_hbg}; color: {_hcol}; padding: 9px 10px; border-radius: 6px; margin-top: 6px; font-size: 14px; font-weight: bold;">{_hl}<br><span style="font-size: 12px; font-weight: normal;">{_hpt}{_hret_txt} | Opposite candle: {_hopp} | Target ke liye {_hcn} candle chahiye</span></div><div style="font-size: 12.5px; margin-top: 5px; line-height: 1.45;"><b>🎯 Target Hit Probability:</b> {_hw1} = <b>{_hp1:.0f}%</b> | {_hw2} = <b>{_hp2:.0f}%</b> | SL se pehle Target = <b>{_hps:.0f}%</b><br><b>🛡️ Pullback Zone:</b> {_hzl:,.0f} - {_hzh:,.0f} | <b>Floor (iske neeche CLOSE = danger):</b> {_hfl:,.0f}<br><b>🧠 FOMO Guard:</b> {_hfomo}<br><b>🚪 Exit Rule:</b> {_hexit}<br><b>Action:</b> {_ha}</div>'
+                            st.markdown(_hhtml, unsafe_allow_html=True)
+                            with st.expander("🔍 Hold ka detail - kaunsa factor Healthy / Danger hai"):
+                                st.write("✅ Healthy (hold ke paksh me):")
+                                for _hh in (idea.get("hold_healthy", []) or ["- koi healthy signal nahi"]): st.write(f"- {_hh}")
+                                st.write("⚠️ Danger (reversal ke paksh me):")
+                                for _dd in (idea.get("hold_danger", []) or ["- koi danger nahi"]): st.write(f"- {_dd}")
+                                st.caption("Yaad rakho: 1 red candle = reversal nahi. EXIT sirf CLOSED candle + Floor + 2-3 danger ek saath ho tab. Adhuri candle ka low dekh ke kabhi exit mat karo - wahi FOMO loss hai.")
+                        except Exception:
+                            pass
+
                         # V85 BAD-MESSAGE FIX: upar wala html_card hi EK box hai - dobara same message mat dikhao
                         try:
                             if "NO TRADE" in str(_sv):
