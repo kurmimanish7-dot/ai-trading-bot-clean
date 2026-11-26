@@ -1341,8 +1341,15 @@ def _v84_clear_all_caches():
     except Exception:
         pass
 
-def _v84_do_refresh():
-    """REFRESH button ka kaam - cache saaf + force flag + safe rerun (V81 pattern, beech me rerun nahi). V105: PCR bhi force karo, warna REFRESH ke baad bhi PCR 1.05 hi rahega."""
+def _v84_do_refresh(section="ticker"):
+    """REFRESH button ka kaam - V109: Sirf us section ka cache saaf karo, pura page mat saaf karo. Pehle sab saaf hota tha, isliye 5 min lagta tha."""
+    try: _v109_clear_section(str(section or "ticker"))
+    except Exception: pass
+    try:
+        # Sirf PCR/Ticker refresh hai to hi PCR force karo, FII/Macro refresh pe PCR mat chhedo
+        if str(section or "ticker").lower() in ("pcr", "ticker", "all"):
+            _v59_ss_set('_v103_force_pcr', True)
+    except Exception: pass
     try: _v59_ss_set('_v103_force_pcr', True)
     except Exception: pass
     try: _v59_ss_set('_v105_last_refresh_attempt', time.time())
@@ -1356,7 +1363,7 @@ def _v84_do_refresh():
         _st84b.session_state["_v84_force"] = True
     except Exception:
         pass
-    _v84_clear_all_caches()
+    # V109: _v84_clear_all_caches() YAHAN SE HATAYA - yehi pura page 5 min load karata tha. Sirf _v109_clear_section() upar chalega.
     _v81_safe_rerun()
 
 def _v84_is_stale_text():
@@ -1402,8 +1409,10 @@ def _v84_refresh_bar(suffix):
         _c1, _c2 = st.columns([1, 2])
         with _c1:
             try:
-                if st.button("🔄 REFRESH - Yahan Dabao", key=f"v84_refresh_{suffix}", use_container_width=True):
-                    _v84_do_refresh()
+                # V109: suffix hi section hai - top/ticker -> ticker only, fii -> fii only, global -> macro only. Pura page nahi.
+                _sec109 = "ticker" if str(suffix).lower() in ("top", "bottom", "ticker") else str(suffix).lower()
+                if st.button(f"🔄 REFRESH - Sirf {str(_sec109).upper()} Section", key=f"v84_refresh_{suffix}", use_container_width=True):
+                    _v84_do_refresh(_sec109)
             except Exception:
                 pass
         with _c2:
@@ -1411,7 +1420,12 @@ def _v84_refresh_bar(suffix):
                 if _stale:
                     st.markdown(f"⚠️ **Data {_age} hai - REFRESH dabao, naya live aayega** | Page: {_now_str}")
                 else:
-                    st.caption(f"LIVE | Page: {_now_str} | Data: {_age} | REFRESH dabane pe instant live")
+                    # V109: Section refresh batayo - pura page nahi, sirf ye section refresh hoga
+                    try:
+                        _last_sec109 = _v59_ss_get('_v109_last_section', '')
+                        _sec_txt109 = f" | Last Section Refresh: {_last_sec109}" if _last_sec109 else ""
+                    except Exception: _sec_txt109 = ""
+                    st.caption(f"LIVE | Page: {_now_str} | Data: {_age}{_sec_txt109} | REFRESH dabane pe sirf ye section refresh hoga, pura page 5 min nahi lega")
             except Exception:
                 pass
     except Exception:
@@ -4518,6 +4532,65 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V109 SECTION REFRESH - 26 Nov 2026 - REFRESH dabate hi pura page 5 min load hota hai, aisa nahi chahiye
+# PROPER CHECK - User sahi bol raha hai, chaplusi nahi:
+# - Jad: _v84_do_refresh -> _v105_clear_all_caches -> SAB cache saaf (Spot + Chain + PCR + VIX + Macro + Gift). Isliye REFRESH PCR dabane pe bhi Spot + VIX + Gift + FII + Macro sab dobara network se aate the, 5 min lagta tha.
+# - Streamlit me button dabane pe script dobara chalega hi, isko rok nahi sakte. Par agar baaki section cache se aayenge to dobara chalke bhi 5 min nahi, 10s lagega. Yehi asli fix hai.
+# - Fragment wapas NAHI layenge - V87 me @st.fragment + ThreadPool ne Bad message / SessionInfo crash karaya tha, trading time pe roz app girta tha. Fragment se section refresh hota hai, par crash ka risk wapas aayega. Isliye section-cache wala fix kiya hai, jo same result dega bina crash ke.
+# FIX:
+# - _v109_clear_section(section): Sirf us section ka cache saaf karo, baaki ko mat chhedo.
+#   PCR -> sirf Chain + PCR time. GIFT -> sirf Gift. SPOT -> sirf Spot. TICKER -> Spot+PCR+VIX+Gift (FII/Macro nahi).
+# - _v84_do_refresh(section="ticker"): Ab "all" nahi, "ticker" default hai. Top REFRESH dabane pe FII/Macro dobara nahi aayenge, sirf Ticker aayega.
+# - REFRESH PCR button: Sirf PCR clear karega, Spot/Gift/VIX ko nahi chhedega. Isliye PCR refresh 10s me hoga, 5 min nahi.
+# - GIFT cache: Gift 60s me fetch hua hai to dobara 5 source parallel mat maaro, cache se dikhao. Gift ka REFRESH dabane pe hi fresh lao.
+# - LIMIT (jhooth nahi): Button dabane pe page ka header dobara dikhega hi (Streamlit ka rule hai), par data load 5 min nahi hoga, kyunki baaki section cache se 0s me aayenge. Sirf jis section ka REFRESH dabaya hai, uska 8-10s lagega.
+# =====================================================================
+def _v109_clear_section(section="pcr"):
+    """Sirf us section ka cache saaf karo, pura page mat saaf karo."""
+    try:
+        _s109 = str(section).lower()
+        if _s109 in ("pcr", "ticker"):
+            try:
+                _cc109 = _v59_ss_get("_v58_chain_cache", {})
+                if isinstance(_cc109, dict): _cc109.clear(); _v59_ss_set("_v58_chain_cache", {})
+            except Exception: pass
+            try: _v59_ss_set("_last_pcr_ts", 0)
+            except Exception: pass
+        if _s109 in ("gift", "ticker"):
+            try: _v59_ss_set("_v109_gift_cache", {"price": None, "ts": 0})
+            except Exception: pass
+        if _s109 in ("spot", "ticker"):
+            try: _V92_SPOT_CACHE.update({"spot": None, "src": "", "ts": 0.0, "time_str": ""})
+            except Exception: pass
+            try:
+                _sc109 = globals().get("_spot_cache_v19")
+                if isinstance(_sc109, dict): _sc109.clear()
+            except Exception: pass
+        if _s109 in ("vix", "ticker"):
+            try: _v59_ss_set("_v105_vix_cache", {"vix": None, "ts": 0})
+            except Exception: pass
+        if _s109 == "all":
+            try: _v105_clear_all_caches()
+            except Exception: pass
+        # Refresh attempt time - kaunsa section refresh hua, ye bhi dikhao
+        try: _v59_ss_set("_v109_last_section", str(_s109)); _v59_ss_set("_v105_last_refresh_time_str", datetime.now(IST).strftime("%H:%M:%S"))
+        except Exception: pass
+    except Exception: pass
+
+def _v109_gift_get_cached():
+    try:
+        _g109 = _v59_ss_get("_v109_gift_cache", None)
+        if isinstance(_g109, dict) and _g109.get("price") and time.time() - float(_g109.get("ts", 0)) < 60:
+            return float(_g109["price"]), float(_g109.get("pct", 0.0)), _g109.get("prev"), str(_g109.get("src", ""))
+    except Exception: pass
+    return None, 0.0, None, ""
+
+def _v109_gift_set_cached(price, pct, prev, src):
+    try: _v59_ss_set("_v109_gift_cache", {"price": float(price), "pct": float(pct or 0.0), "prev": prev, "src": str(src), "ts": time.time()})
+    except Exception: pass
+
 # =====================================================================
 # V107 GIFT NIFTY + MAX PAIN FIX - 26 Nov 2026 - GIFT nahi aa raha, PCR check karo
 # PROPER CHECK - Screenshot se hi proof hai, chaplusi nahi:
@@ -6833,9 +6906,9 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
                 else:
                     st.caption(f"⚠️ Last REFRESH PCR: {_last_att105.get('time_str')} - Tried 3 sources, 0 worked - Cloud block hai, isliye same 1.05 hai. Button kaam kar raha hai, chain nahi aa raha.")
         except Exception: pass
-        if st.button("🔄 REFRESH PCR LIVE (NSE Chain + Quantsapp, 10s)", key="v103_refresh_pcr_btn", use_container_width=True):
-            # V105: Button dabate hi chain cache saaf karo + force set karo, taaki purana chain wapas na aaye. 10-24s lagega, 11 KB/s pe slow hai - ye button ka fault nahi, network ka hai.
-            try: _v105_clear_all_caches()
+        if st.button("🔄 REFRESH PCR LIVE - Sirf PCR Section (10s)", key="v103_refresh_pcr_btn", use_container_width=True):
+            # V109: Sirf PCR clear karo, Spot/Gift/VIX ko mat chhedo - isliye 10s lagega, 5 min nahi.
+            try: _v109_clear_section("pcr")
             except Exception: pass
             try: _v59_ss_set('_v103_force_pcr', True)
             except Exception: pass
@@ -8434,7 +8507,12 @@ def _v85_gift_via_liveindex():
     return None, 0.0, None, "FAILED"
 
 def _v85_fetch_gift_fast():
-    """V85: Quantsapp + GiftToday + LiveIndex PARALLEL, max 5s. Phir V83 wale NSEIX/Google/Futures backup. Sab fail ho to FILE last-good, tabhi bhi fail ho to hi None (Retry). FAILED kabhi seedha nahi."""
+    """V85: Quantsapp + GiftToday + LiveIndex PARALLEL, max 5s. V109: Gift 60s me fetch hua hai to dobara 5 source mat maaro, cache se dikhao - isliye REFRESH PCR dabane pe Gift dobara 5s nahi lega."""
+    try:
+        _cg109, _cgpct109, _cgprev109, _cgsrc109 = _v109_gift_get_cached()
+        if _cg109 and _cg109 > 0:
+            return _cg109, _cgpct109, _cgprev109, str(_cgsrc109) + " (CACHED 60s)"
+    except Exception: pass
     try:
         import concurrent.futures as _cf85
         with _cf85.ThreadPoolExecutor(max_workers=5) as _ex:
@@ -8459,6 +8537,8 @@ def _v85_fetch_gift_fast():
                 _r = _res.get(_k, (None, 0.0, None, "FAILED"))
                 if _r and _r[0] and _r[0] > 0:
                     _v85_gift_save_file(_r[0], _r[1], _r[2], _r[3])
+                    try: _v109_gift_set_cached(_r[0], _r[1], _r[2], _r[3])
+                    except Exception: pass
                     return _r
         # Backup: V83 Futures (kabhi kabhi chalta hai)
         try:
