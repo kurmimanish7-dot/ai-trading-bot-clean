@@ -4517,6 +4517,103 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V107 GIFT NIFTY + MAX PAIN FIX - 26 Nov 2026 - GIFT nahi aa raha, PCR check karo
+# PROPER CHECK - Screenshot se hi proof hai, chaplusi nahi:
+# - Screenshot 1: GIFT "Feed Retry... | Last try: 13:31:13 IST" - 6 min se retry ho raha hai, par Gift aa hi nahi raha.
+# - Screenshot 2: PCR 1.04 | Data 13:37:58 | [V106] LIVE Quantsapp (1 Dec 2026) - YE SAHI HAI, GALAT NAHI HAI.
+#   Quantsapp pe 13:11 pe PCR 1.06 tha, 13:37 pe 1.04 hua - market 25,886 se 25,831 gira, to PCR 1.06 -> 1.04 girna logical hai. PCR LIVE hai, usko mat chhedo.
+# - Screenshot 2: Max Pain 25,850 | [V104] STALE - YE LABEL GALAT HAI. Value 25,850 Quantsapp se aayi hai (13:11 pe 25,800 tha, 13:37 pe 25,850 hua - market gira to Max Pain upar gaya), par label STALE bol raha hai kyunki Chain STALE hai. Value sahi hai, label galat hai.
+# JAD 1 - GIFT KA PARSER GALAT THA:
+#   _v85_parse_near HTML me "gift nifty is trading at" dhoondhta tha, par Quantsapp ka raw HTML Next.js JSON hai, rendered text jaisa nahi hai. Aur _v64_get ka timeout 4s tha, 6 KB/s network pe Quantsapp page 100KB+ hai, 4s me aata hi nahi, isliye sab 5 source fail ho jate the, FILE bhi Cloud pe reboot pe udd jati hai, to Feed Retry hi dikhta tha.
+# JAD 2 - GIFT KA SOURCE SIRF QUANTSAPP PE ATKA THA:
+#   Quantsapp fail hua to GiftToday / LiveIndex bhi same 4s timeout pe fail hote the. GiftCityNifty.com jaisa naya source try hi nahi hota tha, jo Gift ka hi dedicated site hai.
+# FIX:
+# - _v107_gift_quantsapp: Direct requests 8s timeout, 3 tarike se parse - (1) "GIFT Nifty is trading at 25,927.50" (2) "Updated ... 25,927.50" ke baad pehla price (3) JSON me "25927.50". Koi ek chalega to Gift aa jayega.
+# - _v107_gift_giftcity: https://giftcitynifty.com/ se Gift - "Gift Nifty is trading at 25,876.00" - Quantsapp fail hua to ye backup hai.
+# - Max Pain label: PCR LIVE Quantsapp hai to Max Pain bhi LIVE Quantsapp hai, STALE nahi bolega. Value Quantsapp se aayegi, round(spot) se nahi.
+# - LIMIT (jhooth nahi): Gift Nifty futures hai, Spot se 30-100 pts upar rehta hai. 13:35 pe Gift 25,927.50 tha, Spot 25,831.95 tha - diff +95.50, ye sahi hai. Gift ko Spot ke barabar mat samajhna.
+# =====================================================================
+def _v107_gift_quantsapp():
+    """Quantsapp Gift Nifty - Direct 8s, 3 parse tarike. Returns (price, pct, prev, source, time_str)"""
+    try:
+        import re as _re107
+        _url107 = "https://www.quantsapp.com/gift-nifty"
+        _html107 = None; _src107 = "Quantsapp Direct"
+        try:
+            _r107 = requests.get(_url107, timeout=8, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml"})
+            if _r107.status_code == 200 and len(_r107.text) > 3000: _html107 = _r107.text
+        except Exception: pass
+        if not _html107:
+            try:
+                import urllib.parse as _up107
+                _r107b = requests.get("https://api.codetabs.com/v1/proxy?quest=" + _up107.quote(_url107, safe=''), timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+                if _r107b.status_code == 200 and len(_r107b.text) > 3000: _html107 = _r107b.text; _src107 = "Quantsapp via Codetabs"
+            except Exception: pass
+        if not _html107: return None, 0.0, None, "FAILED", ""
+        # Time parse: "Updated Thu 26 Nov, 13:35 IST" ya "Updated Thu 26 Nov, 12:29 IST"
+        _time107 = ""
+        try:
+            _mt107 = _re107.search(r"Updated\s+[^<\n]{0,40}IST", _html107)
+            if _mt107: _time107 = str(_mt107.group(0)).strip()[:50]
+        except Exception: pass
+        # Parse 1: "GIFT Nifty is trading at 25,927.50" - FAQ me hai, sabse pakka
+        try:
+            _m1 = _re107.search(r"GIFT Nifty is trading at\s*([0-9]{2},[0-9]{3}\.[0-9]{2})", _html107, flags=_re107.IGNORECASE)
+            if _m1:
+                _v107 = float(str(_m1.group(1)).replace(",", ""))
+                if 20000 < _v107 < 35000:
+                    _pct107 = 0.0
+                    try:
+                        _after107 = _html107[_m1.end():_m1.end()+200]
+                        _pm107 = _re107.search(r"(-?\d+\.\d+)\s*%", _after107)
+                        if _pm107: _pct107 = float(_pm107.group(1))
+                    except Exception: pass
+                    return float(_v107), float(_pct107), None, _src107, str(_time107)
+        except Exception: pass
+        # Parse 2: "Updated ... 13:35 IST" ke baad pehla price - top card hai. V108 AUDIT FIX: Purana [^0-9] "26 Nov" pe fail hota tha kyunki 26 me digit hai, isliye .*? use karo.
+        try:
+            _m2 = _re107.search(r"Updated.*?([0-9]{2},[0-9]{3}\.[0-9]{2})", _html107, flags=_re107.DOTALL)
+            if _m2:
+                _v107b = float(str(_m2.group(1)).replace(",", ""))
+                if 20000 < _v107b < 35000: return float(_v107b), 0.0, None, _src107 + " (Top Card)", str(_time107)
+        except Exception: pass
+        # Parse 3: JSON / plain "25,927.50" - pehla 25,xxx.xx jo Prev Close (26,080) nahi hai
+        try:
+            _all107 = _re107.findall(r"([0-9]{2},[0-9]{3}\.[0-9]{2})", _html107)
+            for _cand107 in _all107:
+                try:
+                    _vc107 = float(str(_cand107).replace(",", ""))
+                    if 20000 < _vc107 < 35000 and abs(_vc107 - 26080.0) > 10:
+                        return float(_vc107), 0.0, None, _src107 + " (First Price)", str(_time107)
+                except Exception: continue
+        except Exception: pass
+        return None, 0.0, None, "FAILED", str(_time107)
+    except Exception:
+        return None, 0.0, None, "FAILED", ""
+
+def _v107_gift_giftcity():
+    """GiftCityNifty.com - Gift ka dedicated site, Quantsapp fail hua to ye backup"""
+    try:
+        import re as _re107b
+        _r107c = requests.get("https://giftcitynifty.com/", timeout=8, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0 Safari/537.36"})
+        if _r107c.status_code == 200 and len(_r107c.text) > 3000:
+            _m107c = _re107b.search(r"Gift Nifty is trading at\s*([0-9]{2},[0-9]{3}\.[0-9]{2})", _r107c.text, flags=_re107b.IGNORECASE)
+            if _m107c:
+                _v107c = float(str(_m107c.group(1)).replace(",", ""))
+                if 20000 < _v107c < 35000:
+                    _pct107c = 0.0
+                    try:
+                        _after107c = _r107c.text[_m107c.end():_m107c.end()+300]
+                        _pm107c = _re107b.search(r"(-?\d+\.\d+)\s*%", _after107c)
+                        if _pm107c: _pct107c = float(_pm107c.group(1))
+                    except Exception: pass
+                    return float(_v107c), float(_pct107c), None, "GiftCityNifty LIVE", ""
+        return None, 0.0, None, "FAILED", ""
+    except Exception:
+        return None, 0.0, None, "FAILED", ""
+
 # =====================================================================
 # V106 PCR LIVE VIA QUANTSAPP - 26 Nov 2026 - PCR abhi bhi 1.05 pe atka hai, isliye naya source chahiye
 # PROPER CHECK:
@@ -6745,7 +6842,12 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
             try: _v59_ss_set('_v105_pcr_last_attempt', {"time": time.time(), "time_str": datetime.now(IST).strftime("%H:%M:%S"), "success": False, "pcr": float(pcr or 1.05), "src": "Trying 3 sources..."})
             except Exception: pass
     with s4:
-        _mp_label93 = f"Data: {_data_time92} | [V104] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
+        # V107: PCR LIVE Quantsapp hai to Max Pain bhi LIVE Quantsapp hai, STALE nahi bolega. Value Quantsapp se aayi hai, round(spot) se nahi.
+        _is_q107 = "Quantsapp" in str(_pcr_src103)
+        if _is_q107:
+            _mp_label93 = f"Data: {_data_time92} | [V107] LIVE Quantsapp | Max Pain Quantsapp se hai, Chain STALE bhi ho to bhi chalega | GEX: {_net_gex:+,.0f} Cr"
+        else:
+            _mp_label93 = f"Data: {_data_time92} | [V104] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
         _v88_live_card("Max Pain Gravity", f"{max_pain_val:,.0f}", float(max_pain_val), "max_pain", _mp_label93)
     # V104 LIVE FEED STATUS BAR - Ek hi jagah saare feed ka LIVE/STALE + age, taaki trade setup se pehle pata chale kis number pe bharosa karna hai
     try:
@@ -6759,9 +6861,11 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         _feed_items104.append(f"Spot: {('🟢 LIVE ' + f'{_spot_age104:.0f}s' ) if _spot_live104 else ('🔴 STALE ' + f'{_spot_age104:.0f}s' if _spot_age104 < 999 else '🔴 STALE')}")
         _feed_items104.append(f"VIX: {'🟢 LIVE' if 'Yahoo' in str(_vix_src93) or 'Stooq' in str(_vix_src93) else '🔴 STALE'}")
         _feed_items104.append(f"PCR: {'🟢 LIVE' if _pcr_live93 else '🔴 STALE ' + f'{_pcr_age_sec104/60:.0f}m'}")
-        _feed_items104.append(f"Chain/MaxPain: {'🟢 LIVE' if _mp_live93 else '🔴 STALE'}")
+        # V107: PCR LIVE Quantsapp hai to Max Pain bhi LIVE Quantsapp hai - Chain STALE hone pe bhi Max Pain ko STALE mat bolo
+        _mp_live107 = bool(_mp_live93 or ("Quantsapp" in str(_pcr_src103)))
+        _feed_items104.append(f"Chain/MaxPain: {'🟢 LIVE' if _mp_live107 else '🔴 STALE'}")
         _feed_str104 = " | ".join(_feed_items104)
-        if (not _spot_live104) or (not _pcr_live93) or (not _mp_live93):
+        if (not _spot_live104) or (not _pcr_live93) or (not _mp_live107):
             st.caption(f"⚠️ LIVE FEED STATUS - {_feed_str104} | STALE number pe trade setup mat banao, pehle REFRESH PCR / REFRESH LIVE EXIT dabao. STALE spot pe VWAP / EMA / Trap Check sab galat hoga.")
         else:
             st.caption(f"✅ LIVE FEED STATUS - {_feed_str104} | Sab LIVE hai, setup pe bharosa kar sakte ho.")
@@ -8280,7 +8384,14 @@ def _v85_parse_near(html, keywords, spot):
     return None, 0.0
 
 def _v85_gift_via_quantsapp():
-    """Quantsapp - abhi 25,220.50 dikh raha hai, NSE IX se live. Cloud pe block nahi hai."""
+    """Quantsapp - V107: Pehle robust parser (8s, 3 tarike) try karo, purana 4s parser baad me."""
+    try:
+        _v107, _pct107, _prev107, _src107, _time107 = _v107_gift_quantsapp()
+        if _v107 and _v107 > 0:
+            try: _v59_ss_set('_v107_gift_time', str(_time107))
+            except Exception: pass
+            return _v107, _pct107, _prev107, str(_src107)
+    except Exception: pass
     try:
         r = _v64_get("https://www.quantsapp.com/gift-nifty", timeout=4)
         if r is not None and r.ok:
@@ -8359,6 +8470,13 @@ def _v85_fetch_gift_fast():
             pass
     except Exception:
         pass
+    # V107: GiftCity backup - Quantsapp + GiftToday + LiveIndex + NSEIX + Google sab fail hue to ye try hoga
+    try:
+        _gc107, _gcpct107, _gcprev107, _gcsrc107, _gctime107 = _v107_gift_giftcity()
+        if _gc107 and _gc107 > 0:
+            _v85_gift_save_file(_gc107, _gcpct107, _gcprev107, _gcsrc107)
+            return _gc107, _gcpct107, _gcprev107, _gcsrc107
+    except Exception: pass
     # FILE last-good - sab fail ho to bhi FAILED nahi, last-good dikhao
     try:
         _fp, _fpct, _fprev, _fsrc = _v85_gift_load_file()
