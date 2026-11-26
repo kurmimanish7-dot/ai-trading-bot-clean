@@ -4446,6 +4446,46 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V102 AUTO-REFRESH - 26 Nov 2026 - Bhai ne sahi pakda: Auto-refresh system tha hi nahi
+# PROPER CHECK KA RESULT (chaplusi nahi):
+# - HAS_AUTOREFRESH = False, autorefresh import DELETE, fragment DUMMY, _v81_safe_rerun NO-OP hai.
+# - "Auto Scan" wala code sirf tab chalta hai jab page DOBARA load hota hai (pull-down / REFRESH / SCAN button).
+#   Agar tu page khula chhod de to kuch nahi hoga - status wahi purana rahega. Isliye pull-down karne pe status badalta tha.
+# - Ye jaan ke band kiya tha, galti se nahi: V55.3 / V59 me autorefresh + fragment ne SessionInfo / Bad message format crash karaya tha,
+#   trading time pe roz app girta tha. Isliye auto-refresh band karke sirf manual REFRESH rakha tha. Crash gaya, par live bhi gaya.
+# INTELLIGENT FIX - Fragment / autorefresh wapas NAHI layenge (wohi crash wapas aayega):
+# - V102 me JS timer use kiya hai: components.html se setTimeout -> parent.window.location.reload().
+#   Ye bilkul wahi hai jo tu pull-down karke karta hai, bas automatic hai. Streamlit ke session ko chhedta nahi, isliye SessionInfo nahi aayega.
+# - 2-TIER: Position hai to 60s (default) - exit ke liye fast chahiye. Position nahi hai to 300s (5 min) - naya signal scan heavy hai (10-15s), har 60s me scan queue lag jayega.
+# - Cache ka sach: Spot/Macro 60-120s cache hai. 30s me refresh karoge to wahi purana number aayega, fayda nahi. Isliye 60s minimum rakha hai.
+# - LIMIT (jhooth nahi bolunga): Tab khula rakhna hoga. Phone sleep / tab background me jayega to browser JS timer rok deta hai, auto-refresh ruk jayega.
+#   Tab band hai to Telegram bhi nahi aayega - Streamlit Cloud me bina khule tab ke background worker nahi hai. Isliye live trade me tab khula rakho, Telegram ko backup samjho, main rasta nahi.
+# - Telegram spam nahi hoga: auto_check me cooldown hai - EMERGENCY 5 min, CAUTION/TRAP 15 min. 60s refresh pe bhi Telegram 5 min me 1 baar hi aayega.
+# =====================================================================
+def _v102_auto_refresh_timer(interval_sec=60, enabled=True, has_position=False):
+    """JS timer se pull-down automatic karo. Returns True agar timer lagaya."""
+    try:
+        if not enabled: return False
+        _iv = int(interval_sec or 60)
+        _iv = max(30, min(600, _iv))
+        # Trading hours ke bahar slow kar do - 9:15 se pehle / 15:30 ke baad har 60s me reload ka matlab nahi
+        try:
+            _now102 = datetime.now(IST); _mins102 = _now102.hour*60 + _now102.minute
+            if _mins102 < 555 or _mins102 > 935:  # 9:15 se pehle ya 15:35 ke baad
+                _iv = 300
+        except Exception: pass
+        try:
+            import streamlit.components.v1 as _comp102
+            # Parent reload - yehi pull-down hai, bas automatic. Height 0, dikhega nahi.
+            _comp102.html(f"<script>setTimeout(function(){{ try{{ window.parent.location.reload(); }}catch(e){{ window.location.reload(); }} }}, {_iv*1000});</script>", height=0)
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False
+
 # =====================================================================
 # V101 GREEN / RED / YELLOW MATRIX - 26 Nov 2026 - Screenshot wala bug fix
 # Problem screenshot me: CE aur PE dono box YELLOW (CAUTION) dikhe, isliye samajh nahi aaya kya lena / hold / nikalna hai.
@@ -11618,6 +11658,14 @@ else:
     
     auto_alert_enabled = st.sidebar.checkbox("✅ Enable Auto Entry/Exit Alerts (No Scan Click)", value=default_auto_enabled, help="When ON, scans every 5 min and sends Telegram automatically without clicking SCAN ALL")
     auto_scan_interval = st.sidebar.slider("Auto Scan Interval (min)", 1, 15, default_scan_interval, help="How often to auto scan for new setups")
+    # V102: Auto-refresh controls - Position hai to fast, nahi hai to slow. Default ON, kyunki bina iske status badlega hi nahi.
+    _ps102 = st.session_state.get('persistent_settings', {})
+    auto_refresh_enabled = st.sidebar.checkbox("🔄 Auto Refresh - Position ke liye (Pull-down automatic)", value=_ps102.get('auto_refresh_enabled', True), help="ON rahe to page khud 60s me reload hoga - pull-down karne ki zaroorat nahi. Tab khula rakhna hoga, phone sleep hone pe timer ruk jayega.")
+    auto_refresh_interval = st.sidebar.slider("Auto Refresh - Position hai to (sec)", 30, 180, int(_ps102.get('auto_refresh_interval', 60)), help="Position hai to itne sec me refresh hoga. 30s se kam mat rakho - cache 60s ka hai, wahi purana number aayega. Position nahi hai to 5 min pe refresh hoga.")
+    try:
+        save_persistent_settings({'auto_refresh_enabled': auto_refresh_enabled, 'auto_refresh_interval': auto_refresh_interval})
+        st.session_state['persistent_settings'].update({'auto_refresh_enabled': auto_refresh_enabled, 'auto_refresh_interval': auto_refresh_interval})
+    except Exception: pass
     
     # Save auto settings
     try:
@@ -11705,7 +11753,7 @@ else:
             elapsed = (time.time() - last_scan) / 60
             st.sidebar.caption(f"Last auto scan: {elapsed:.1f} min ago | Next in {max(0, auto_scan_interval - elapsed):.1f} min")
         else:
-            st.sidebar.caption("Auto scan will run on next refresh")
+            st.sidebar.caption("Auto scan tab khula hone pe Auto Refresh ke saath chalega - band tab me nahi chalega")
     
     st.sidebar.divider()
     st.sidebar.markdown("### 🔴 REAL TRADING (Angel One)")
@@ -12369,6 +12417,29 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         st.markdown(f"### {SHIELD} Live Position Exit Monitor ({tf['smartapi']}) - 🔴 LIVE STREAMING")
         if st.button(f"🔄 REFRESH LIVE EXIT ({tf['smartapi']}) - Spot + LTP LIVE", key=f"refresh_exit_{tf['smartapi']}", use_container_width=True):
             _v81_safe_rerun()  # V55.4: cache clear hataya
+        # V102 AUTO-REFRESH TIMER - Yahan lagaya hai, taaki Position wali screen pe hi auto-refresh ho, har page pe nahi.
+        # Logic: Position hai to user wale interval pe (default 60s), Position nahi hai to 300s pe. OFF hai to timer nahi lagega.
+        try:
+            _ps102b = st.session_state.get('persistent_settings', {}) if isinstance(st.session_state.get('persistent_settings', {}), dict) else {}
+            _ar_en102 = bool(_ps102b.get('auto_refresh_enabled', True))
+            _ar_iv102 = int(_ps102b.get('auto_refresh_interval', 60) or 60)
+            _has_pos102 = False
+            try:
+                _has_pos102 = bool(st.session_state.get('paper_portfolio', {}).get('positions'))
+            except Exception: _has_pos102 = False
+            _iv102 = _ar_iv102 if _has_pos102 else 300
+            if _ar_en102:
+                _ok102 = _v102_auto_refresh_timer(interval_sec=_iv102, enabled=True, has_position=_has_pos102)
+                if _ok102:
+                    if _has_pos102:
+                        st.caption(f"🔄 Auto Refresh ON - Position hai, isliye har {_iv102}s me page khud reload hoga (pull-down automatic) | Last refresh: {datetime.now(IST).strftime('%H:%M:%S IST')} | Tab khula rakho, phone sleep hone pe timer ruk jayega | Telegram 5 min me 1 baar hi aayega (cooldown hai)")
+                    else:
+                        st.caption(f"🔄 Auto Refresh ON - Position nahi hai, isliye har 300s (5 min) me refresh hoga - naya Strong Signal check ke liye | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Position loge to 60s pe aa jayega")
+                else:
+                    st.caption("⏸️ Auto Refresh OFF - Timer nahi laga, status badalne ke liye pull-down / REFRESH dabao")
+            else:
+                st.caption("⏸️ Auto Refresh OFF hai (Sidebar se ON karo) - Status badalne ke liye pull-down / REFRESH dabana padega")
+        except Exception: pass
         st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | V101: GREEN=HOLD/BUY, YELLOW=HALF+HOLD, RED=SELL/NIKALO | CORE + BB + VIX LIVE - FII/Macro sirf Bias - 1 RED light pe EMERGENCY nahi")
         
         # Original header removed, now combined
