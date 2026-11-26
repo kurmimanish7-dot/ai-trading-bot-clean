@@ -1281,7 +1281,9 @@ def get_persist(key, default):
 # (3) Gift V83 wala hi rahega (Spot kabhi Gift nahi) (4) FII V83 wala hi rahega (Kal ka, Awaiting nahi) (5) Bad message V81 wala hi rahega (flag se rerun)
 # JAD: REFRESH sirf upar 1 jagah tha, neeche scroll karne pe dikhta hi nahi tha. Aur wo sirf rerun karta tha, _V63_GLOBAL_CACHE clear nahi karta tha, isliye REFRESH ke baad bhi wahi 23:04 wala stale number aata tha.
 def _v84_clear_all_caches():
-    """REFRESH ka matlab - purana cache saaf karo, taaki naya live number aaye, kal raat wala nahi."""
+    """REFRESH ka matlab - purana cache saaf karo, taaki naya live number aaye, kal raat wala nahi. V105: Sirf 3 cache nahi, SAB cache saaf karo."""
+    try: _v105_clear_all_caches()
+    except Exception: pass
     try:
         _gc = globals().get("_V63_GLOBAL_CACHE")
         if isinstance(_gc, dict):
@@ -1315,7 +1317,11 @@ def _v84_clear_all_caches():
         pass
 
 def _v84_do_refresh():
-    """REFRESH button ka kaam - cache saaf + force flag + safe rerun (V81 pattern, beech me rerun nahi)."""
+    """REFRESH button ka kaam - cache saaf + force flag + safe rerun (V81 pattern, beech me rerun nahi). V105: PCR bhi force karo, warna REFRESH ke baad bhi PCR 1.05 hi rahega."""
+    try: _v59_ss_set('_v103_force_pcr', True)
+    except Exception: pass
+    try: _v59_ss_set('_v105_last_refresh_attempt', time.time())
+    except Exception: pass
     try:
         _v59_ss_set("_v84_force", True)
     except Exception:
@@ -1349,6 +1355,11 @@ def _v84_is_stale_text():
                 return False, f"{int(_diff)} sec pehle"
             except Exception:
                 pass
+        # V105: _v84_last_fetch_time missing ho to "Abhi khula" mat bolo, last refresh attempt dikhao
+        try:
+            _lr105 = _v59_ss_get('_v105_last_refresh_time_str', '')
+            if _lr105: return False, f"Last REFRESH {_lr105}"
+        except Exception: pass
         return False, "Abhi khula"
     except Exception:
         return False, ""
@@ -1357,6 +1368,11 @@ def _v84_refresh_bar(suffix):
     """Har section ke upar REFRESH button + Last Update, ek hi design. Key alag hai, isliye Bad message nahi aayega."""
     try:
         _stale, _age = _v84_is_stale_text()
+        # V105: Last refresh attempt dikhao - "Abhi khula" jhootha tha, asli time dikhao
+        try:
+            _last_ref105 = _v59_ss_get('_v105_last_refresh_time_str', '')
+            if _last_ref105: _age = f"Last REFRESH: {_last_ref105} | {_age}"
+        except Exception: pass
         _now_str = datetime.now(IST).strftime("%H:%M:%S IST")
         _c1, _c2 = st.columns([1, 2])
         with _c1:
@@ -4474,6 +4490,75 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V105 REFRESH + SPEED FIX - 26 Nov 2026 - Refresh button kaam nahi kar raha + Page bahut slow load ho raha hai
+# PROPER CHECK - Screenshot se hi proof hai, chaplusi nahi:
+# - Screenshot 1: PCR 1.05, Age 999 min, CE OI 0, PE OI 0, REFRESH PCR daba ke bhi same. Matlab button daba, par chain aaya hi nahi, aur button ne ye bhi nahi bataya ki usne try kiya ya nahi.
+# - Screenshot 2: REFRESH - Yahan Dabao daba ke bhi Page 12:46:58 pe atka, Data: Abhi khula likha hai - ye age jhootha hai, _v84_last_fetch_time kabhi set hi nahi hua tha.
+# - Network screenshot me 11-12 KB/s dikh raha hai - 4G slow hai. Uspe har load pe 20-30s ka network = page kabhi fast nahi lagega.
+# JAD 1 - REFRESH SIRF 3 CACHE SAAF KARTA THA:
+#   _v84_clear_all_caches sirf _V63_GLOBAL_CACHE + _cached_macro_quotes + _spot_cache_v19 saaf karta tha.
+#   Chain cache (_v58_chain_cache), Spot cache (_V92_SPOT_CACHE), PCR time (_last_pcr_ts), VIX cache (_v58_vix_cache) - ye sab saaf hi nahi hota tha.
+#   Isliye REFRESH dabane pe bhi wahi purana Spot / PCR / Chain wapas aata tha, user ko lagta tha button kaam hi nahi kar raha.
+# JAD 2 - REFRESH KA KOI FEEDBACK NAHI THA:
+#   Button dabane pe "Trying 3 sources..." ya "Tried, 0 worked - Cloud block" kuch nahi dikhta tha. Chain fail hua to wahi 1.05 wapas aata tha, to lagta tha button dead hai.
+#   Asli me button try kar raha tha, par 24s (NSE 8s + 3 proxy 8s each) tak "Running..." me atka rehta tha, mobile pe to aur slow.
+# JAD 3 - HAR LOAD PE 19s KA TICKER:
+#   Har page load pe Ticker: Spot (Stooq 3s + Yahoo 4s) + VIX (Yahoo 4s) + PCR Chain (2 proxy 8s) = 19s, chahe cache 10s pehle hi fresh ho.
+#   PCR cache fresh hai to bhi chain dobara fetch hota tha. VIX cache fresh hai to bhi Yahoo dobara call hota tha. Isliye page slow hai.
+# JAD 4 - JS TIMER LOAD KE BEECH ME HI FIRE HOTA THA:
+#   V102 timer components.html me setTimeout seedha lagata tha, page load hone se pehle hi timer shuru ho jata tha. Page 40s me load hota hai, timer 60s pe hai, to load ke 20s baad hi phir reload - page kabhi settle hi nahi hota, slow + looping lagta hai.
+# FIX:
+# - _v105_clear_all: Sab cache saaf - Spot + Chain + PCR + VIX + Macro + Gift. REFRESH ka matlab ab sach me sab fresh hoga.
+# - Ticker FAST PATH: Spot cache <10s ho to network mat maaro, PCR cache <60s ho to chain mat maaro, VIX cache <60s ho to Yahoo mat maaro. Ticker 19s se 2s pe aayega jab cache fresh hai.
+# - REFRESH PE FEEDBACK: "Last Refresh Attempt: 12:47:30 - Tried 3 sources, PCR 1.05 se 1.12 hua" ya "Tried 3 sources, 0 worked - Cloud block, isliye same 1.05 hai". Button dead nahi lagega.
+# - JS TIMER: Window load hone ke baad timer shuru hoga, interval 60s se 90s (position hai to), taaki 40s load ke baad 50s stable view mile.
+# - LIMIT (jhooth nahi): Agar Cloud IP block hai to REFRESH dabane se bhi chain nahi aayega, PCR 1.05 hi rahega. Tab sahi kaam yehi hai ki attempt dikhao, 1.05 ko LIVE mat bolo. Aur 11 KB/s pe chain 24s lega hi, isliye REFRESH PCR ko sirf tab dabao jab PCR chahiye, har 1 min me nahi.
+# =====================================================================
+def _v105_clear_all_caches():
+    """REFRESH ka matlab - SAB cache saaf, sirf 3 nahi. Taaki REFRESH ke baad wahi purana number na aaye."""
+    try:
+        # Spot caches
+        try:
+            _V92_SPOT_CACHE.update({"spot": None, "src": "", "ts": 0.0, "time_str": ""})
+        except Exception: pass
+        try:
+            _sc105 = globals().get("_spot_cache_v19")
+            if isinstance(_sc105, dict): _sc105.clear()
+        except Exception: pass
+        # Chain cache - PCR ka asli jad yahi tha, pehle saaf hi nahi hota tha
+        try:
+            _cc105 = _v59_ss_get("_v58_chain_cache", {})
+            if isinstance(_cc105, dict):
+                _cc105.clear(); _v59_ss_set("_v58_chain_cache", {})
+        except Exception: pass
+        # Macro + Global
+        try:
+            _v59_ss_set("_cached_macro_quotes", {})
+            import streamlit as _st105
+            if "_cached_macro_quotes" in _st105.session_state: del _st105.session_state["_cached_macro_quotes"]
+        except Exception: pass
+        try:
+            _gc105 = globals().get("_V63_GLOBAL_CACHE")
+            if isinstance(_gc105, dict): _gc105["data"] = None; _gc105["ts"] = 0
+        except Exception: pass
+        # VIX cache - pehle 13.5 atka rehta tha
+        try: _v59_ss_set("_v58_vix_cache", (None, 0))
+        except Exception: pass
+        # PCR - time ko 0 karo taaki agla fetch force ho, value ko mat mito, history rakho
+        try: _v59_ss_set("_last_pcr_ts", 0)
+        except Exception: pass
+        # Refresh attempt time - taaki bar ko pata chale kab dabaya tha
+        try: _v59_ss_set("_v105_last_refresh_attempt", time.time()); _v59_ss_set("_v105_last_refresh_time_str", datetime.now(IST).strftime("%H:%M:%S"))
+        except Exception: pass
+    except Exception: pass
+
+def _v105_record_pcr_attempt(success, pcr_val, src):
+    try:
+        _v59_ss_set("_v105_pcr_last_attempt", {"time": time.time(), "time_str": datetime.now(IST).strftime("%H:%M:%S"), "success": bool(success), "pcr": float(pcr_val) if pcr_val else 1.05, "src": str(src)[:40]})
+    except Exception: pass
+
 # =====================================================================
 # V104 LIVE STREAMING FIX - 26 Nov 2026 - Market ke number live hain ya nahi?
 # PROPER CHECK (chaplusi nahi):
@@ -4683,7 +4768,9 @@ def _v102_auto_refresh_timer(interval_sec=60, enabled=True, has_position=False):
         try:
             import streamlit.components.v1 as _comp102
             # Parent reload - yehi pull-down hai, bas automatic. Height 0, dikhega nahi.
-            _comp102.html(f"<script>setTimeout(function(){{ try{{ window.parent.location.reload(); }}catch(e){{ window.location.reload(); }} }}, {_iv*1000});</script>", height=0)
+            # V105: Timer window load ke baad shuru hoga, page load ke beech me nahi. Pehle timer load ke beech me fire hota tha, isliye page kabhi settle nahi hota tha.
+            _js105 = f"<script>window.addEventListener('load', function(){{ setTimeout(function(){{ try{{ window.parent.location.reload(); }}catch(e){{ window.location.reload(); }} }}, {_iv*1000}); }});</script>"
+            _comp102.html(_js105, height=0)
             return True
         except Exception:
             return False
@@ -6267,10 +6354,17 @@ def _v89_safe_fragment(*d_args, **d_kwargs):  # V91: Ab use nahi hota, sirf back
 # Arrow fix (V88/V90) fragment ke bina bhi chalega - wo sirf HTML card hai, fragment se uska koi lena-dena nahi.
 
 def _v93_get_vix_live():
-    """V95: VIX 13.5 pe atka hua tha kyunki _v58_vix_fast hamesha 13.5 deta tha. Ab Yahoo ^INDIAVIX pehle, phir Stooq indiavix, tabhi 13.5 fallback - aur fallback ko STALE bolenge, LIVE nahi."""
+    """V95: VIX 13.5 pe atka hua tha kyunki _v58_vix_fast hamesha 13.5 deta tha. Ab Yahoo ^INDIAVIX pehle, phir Stooq indiavix, tabhi 13.5 fallback - aur fallback ko STALE bolenge, LIVE nahi. V105 FAST PATH: VIX 60s me fetch hua hai to dobara Yahoo mat maaro, page 4s fast hoga."""
+    try:
+        _vix_c105 = _v59_ss_get('_v105_vix_cache', None)
+        if isinstance(_vix_c105, dict) and _vix_c105.get('vix') and time.time() - float(_vix_c105.get('ts', 0)) < 60:
+            return float(_vix_c105['vix']), str(_vix_c105.get('src', 'Yahoo VIX Live'))
+    except Exception: pass
     try:
         _p, _pct, _prev, _src = _v64_yahoo_one("^INDIAVIX")
         if _p and 5 < float(_p) < 60:
+            try: _v59_ss_set('_v105_vix_cache', {'vix': float(_p), 'ts': time.time(), 'src': 'Yahoo VIX Live'})
+            except Exception: pass
             return float(_p), "Yahoo VIX Live"
     except Exception:
         pass
@@ -6298,11 +6392,26 @@ def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
         _cached_gex = float(_v59_ss_get('_last_net_gex_cr', 0.0) or 0.0)
     except Exception:
         _cached_gex = 0.0
+    # V105 FAST PATH: PCR 60s me fetch hua hai aur REFRESH nahi dabaya hai to chain dobara mat maaro - ticker 8s se 0s pe aayega, page fast khulega.
+    try:
+        _pcr_ts105 = float(_v59_ss_get('_last_pcr_ts', 0) or 0)
+        _pcr_age105 = time.time() - _pcr_ts105 if _pcr_ts105 else 9999.0
+        _is_forced105 = bool(_v59_ss_get('_v103_force_pcr', False))
+        if (not _is_forced105) and _pcr_age105 < 60 and _cached_pcr and 0 < float(_cached_pcr) <= 10:
+            try:
+                _mp_c105 = float(_v59_ss_get('_last_max_pain', 0) or 0)
+                _gex_c105 = float(_v59_ss_get('_last_net_gex_cr', 0.0) or 0.0)
+                _mp_out105 = _mp_c105 if _mp_c105 and abs(_mp_c105 - float(spot or 0)) < 2000 else (float(round(float(spot)/50.0)*50.0) if spot else 25000.0)
+                return float(_cached_pcr), True, float(_mp_out105), True, float(_gex_c105)
+            except Exception: pass
+    except Exception: pass
     # V103 FORCE: REFRESH PCR button daba hai to fast chain skip karke full chain (3 proxy) try karo, warna ticker 8s pe hi atka rahega
     try:
         if _v59_ss_get('_v103_force_pcr', False):
             _v59_ss_set('_v103_force_pcr', False)
             _f_pcr, _f_live, _f_src, _f_ce, _f_pe, _f_age = _v103_get_pcr_multi(selected_underlying, current_expiry, force=True)
+            try: _v105_record_pcr_attempt(_f_live, _f_pcr, _f_src)
+            except Exception: pass
             if _f_live:
                 _pcr, _pcr_live = float(_f_pcr), True
                 # Max Pain ke liye fast chain abhi bhi chahiye, neeche wala fast chain chalega, PCR wapas overwrite mat karna
@@ -6479,8 +6588,22 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
             elif _pcr_live93 and _pcr_age103 < 5:
                 st.caption(f"✅ PCR LIVE hai - {float(pcr):.2f} | {_pcr_src103}")
         except Exception: pass
+        # V105: Last attempt dikhao - button dead nahi lagega. Tried 3 sources, 0 worked to bhi pata chalega.
+        try:
+            _last_att105 = _v59_ss_get('_v105_pcr_last_attempt', None)
+            if isinstance(_last_att105, dict) and _last_att105.get('time_str'):
+                if _last_att105.get('success'):
+                    st.caption(f"✅ Last REFRESH PCR: {_last_att105.get('time_str')} - PCR {_last_att105.get('pcr', 0):.2f} LIVE hua | {_last_att105.get('src','')}")
+                else:
+                    st.caption(f"⚠️ Last REFRESH PCR: {_last_att105.get('time_str')} - Tried 3 sources, 0 worked - Cloud block hai, isliye same 1.05 hai. Button kaam kar raha hai, chain nahi aa raha.")
+        except Exception: pass
         if st.button("🔄 REFRESH PCR LIVE (Chain - 3 Source, 10s)", key="v103_refresh_pcr_btn", use_container_width=True):
+            # V105: Button dabate hi chain cache saaf karo + force set karo, taaki purana chain wapas na aaye. 10-24s lagega, 11 KB/s pe slow hai - ye button ka fault nahi, network ka hai.
+            try: _v105_clear_all_caches()
+            except Exception: pass
             try: _v59_ss_set('_v103_force_pcr', True)
+            except Exception: pass
+            try: _v59_ss_set('_v105_pcr_last_attempt', {"time": time.time(), "time_str": datetime.now(IST).strftime("%H:%M:%S"), "success": False, "pcr": float(pcr or 1.05), "src": "Trying 3 sources..."})
             except Exception: pass
     with s4:
         _mp_label93 = f"Data: {_data_time92} | [V104] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
@@ -12701,7 +12824,7 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             try:
                 _has_pos102 = bool(st.session_state.get('paper_portfolio', {}).get('positions'))
             except Exception: _has_pos102 = False
-            _iv102 = _ar_iv102 if _has_pos102 else 300
+            _iv102 = max(90, int(_ar_iv102 or 90)) if _has_pos102 else 300  # V105: 60s se 90s - 40s load ke baad 50s stable view milega, reload loop nahi hoga
             if _ar_en102:
                 _ok102 = _v102_auto_refresh_timer(interval_sec=_iv102, enabled=True, has_position=_has_pos102)
                 if _ok102:
