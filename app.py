@@ -2310,13 +2310,13 @@ def auto_check_emergency_exit_from_lights(light1, light2, market=None, chain=Non
                 reason = ""
                 if _tier98 == "TRAP":
                     should_exit = False
-                    reason = f"🪤 SELLER TRAP - EXIT MAT KARO: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | Trap: {'; '.join((_v98 or {}).get('trap_signals', [])[:2])}"
+                    reason = f"🟢 HOLD KARO - EXIT MAT KARO (TRAP): {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/14 | Trap: {'; '.join((_v98 or {}).get('trap_signals', [])[:2])}"
                 elif _tier98 == "CAUTION":
                     should_exit = False  # CAUTION pe auto-exit / EMERGENCY telegram nahi - sirf CAUTION telegram bhejenge neeche
-                    reason = f"🟡 CAUTION - FULL EXIT MAT KARO: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | {_v98.get('action','')}"
+                    reason = f"🟡 HALF NIKALO + BAAKI HOLD KARO (CAUTION): {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/14 | {_v98.get('action','')}"
                 elif _tier98 == "CONFIRMED":
                     should_exit = True
-                    reason = f"🚨 CONFIRMED EMERGENCY EXIT {opt_type}: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/11 | 2 CLOSED candle + Structure + Volume + OI sab confirm | {'; '.join((_v98 or {}).get('reversal_signals', [])[:2])}"
+                    reason = f"🔴 SELL KARO - NIKALO (CONFIRMED) {opt_type}: {(_v98 or {}).get('label','')} | Score {(_v98 or {}).get('score','?')}/14 | 2 CLOSED candle + Structure + Volume + OI sab confirm | {'; '.join((_v98 or {}).get('reversal_signals', [])[:2])}"
                 else:
                     should_exit = False
                     reason = f"🟡 CAUTION: {(_v98 or {}).get('label','')}"
@@ -2341,8 +2341,8 @@ def auto_check_emergency_exit_from_lights(light1, light2, market=None, chain=Non
                     pnl = (live_ltp - entry) * pos.get('qty', 0) if opt_type == "CE" else (entry - live_ltp) * pos.get('qty', 0)
                     
                     # V98: Telegram title tier ke hisab se - TRAP pe green, CAUTION pe yellow, CONFIRMED pe hi red
-                    _title98 = "🪤 SELLER TRAP - EXIT MAT KARO" if _tier98 == "TRAP" else ("🟡 CAUTION - FULL EXIT MAT KARO" if _tier98 == "CAUTION" else "🚨 CONFIRMED EMERGENCY EXIT")
-                    _action98 = "HOLD KARO - SL hi invalidation hai" if _tier98 == "TRAP" else ("HALF EXIT / SL TO COST - FULL EXIT MAT KARO" if _tier98 == "CAUTION" else "FULL EXIT @ MARKET")
+                    _title98 = "🟢 HOLD KARO - EXIT MAT KARO" if _tier98 == "TRAP" else ("🟡 HALF NIKALO + BAAKI HOLD KARO" if _tier98 == "CAUTION" else "🔴 SELL KARO - NIKALO")
+                    _action98 = "🟢 HOLD KARO - SL hi invalidation hai" if _tier98 == "TRAP" else ("🟡 HALF NIKALO + BAAKI HOLD KARO - SL Entry pe lao" if _tier98 == "CAUTION" else "🔴 SELL KARO - FULL EXIT @ MARKET")
                     # Send emergency exit telegram
                     msg = f"""{_title98} - {symbol} {pos.get('strike')} {opt_type}*
 
@@ -2352,7 +2352,7 @@ Entry: ₹{entry:.2f} → Exit: ₹{live_ltp:.2f}
 
 🔥 *Reason:* {reason}
 
-🧠 *V100 Check (CORE + BB + VIX LIVE):* Score {(_v98 or {}).get('score','?')}/11 | {_v98.get('window','')} | Opp CLOSED: {(_v98 or {}).get('consecutive_opp_closes',0)} | Vol: {(_v98 or {}).get('vol_ratio','?')}x
+🧠 *V101 Check (CORE + BB + VIX LIVE):* Score {(_v98 or {}).get('score','?')}/14 | {_v98.get('window','')} | Opp CLOSED: {(_v98 or {}).get('consecutive_opp_closes',0)} | Vol: {(_v98 or {}).get('vol_ratio','?')}x
 ✅ *Action:* {_action98}
 📋 *Gates:* {' | '.join([f"{g.get('name','').split(' ')[0]}:{g.get('pts','?')}/{g.get('max','?')}" for g in ((_v98 or {}).get('gates', []) or [])]) if ((_v98 or {}).get('gates')) else 'Data kam - CAUTION'}
 
@@ -2361,7 +2361,7 @@ Vol: {light1.get('vol_ratio',0):.2f}x
 Light1: {light1.get('status')} | Light2: {light2.get('status')}
 
 ⏰ {datetime.now(IST).strftime('%d-%b %H:%M:%S IST')}
-🤖 V100 Trap vs Reversal (6 Core + 3 Context Gate + VETO) - 1-light EMERGENCY BAND"""
+🤖 V101 GREEN/RED/YELLOW Matrix - GREEN=HOLD/BUY, YELLOW=HALF+HOLD, RED=SELL/NIKALO"""
                     
                     ok, resp = send_telegram_message(bot_token, chat_id, msg)
                     print(f"Emergency exit alert sent for {trade_id}: ok={ok} resp={resp}")
@@ -4444,6 +4444,37 @@ def calculate_trap_vs_reversal_v100(
             return {"tier": "CAUTION", "label": "🟡 CAUTION - Data kam hai", "action": "Data kam hai, FULL EXIT mat karo", "telegram_type": "CAUTION", "score": 5, "max_score": 11, "gates": [], "context_gates": [], "context_score": 3, "veto_reason": str(_e99w)}
 
 
+
+
+# =====================================================================
+# V101 GREEN / RED / YELLOW MATRIX - 26 Nov 2026 - Screenshot wala bug fix
+# Problem screenshot me: CE aur PE dono box YELLOW (CAUTION) dikhe, isliye samajh nahi aaya kya lena / hold / nikalna hai.
+# Reason: (1) st.warning / st.success / st.error Streamlit ke pale colour hain, dark mode me sab yellow jaisa lagta hai.
+# (2) CE aur PE dono ek saath dikh rahe the, jabki user ke paas ek hi position hoti hai.
+# (3) Score /11 likha tha jabki V100 me /14 hai, header me abhi bhi BB+FII+Macro likha tha.
+# Fix: Ek hi rule, har jagah same colour + same bade words:
+#  🟢 GREEN = BUY KARO / HOLD KARO - Naya signal ho to BUY KARO, Active position ho to HOLD KARO - Mat nikalo
+#  🟡 YELLOW = HALF NIKALO + BAAKI HOLD KARO - Half nikalo, SL Entry pe lao, baaki ko agle CLOSED candle ka chance do
+#  🔴 RED = SELL KARO / NIKALO - Full exit karo, reversal confirm hai, SL bhi hit ho to nikalna hi hai
+# Active CE ke liye: TRAP = GREEN HOLD KARO, CAUTION = YELLOW HALF+HOLD, CONFIRMED = RED SELL KARO
+# Active PE ke liye: same - TRAP = GREEN HOLD KARO, CAUTION = YELLOW HALF+HOLD, CONFIRMED = RED SELL KARO
+# Naye entry ke liye: BUY signal = GREEN BUY KARO, SELL signal = RED SELL KARO, WAIT = YELLOW HOLD / WAIT KARO
+# Colour kabhi sirf emoji pe mat chhodo - background poora green/yellow/red hai, taaki mobile pe door se bhi dikhe.
+# =====================================================================
+def _v101_box_html(kind, big_text, sub_text):
+    try:
+        _k = str(kind).upper()
+        if _k == "GREEN":
+            _bg = "#0B6E2F"; _bd = "#00E676"
+        elif _k == "YELLOW":
+            _bg = "#7A5A00"; _bd = "#FFD600"
+        else:
+            _bg = "#8E0000"; _bd = "#FF5252"
+        _big = str(big_text).replace("<", "&lt;").replace(">", "&gt;")
+        _sub = str(sub_text).replace("<", "&lt;").replace(">", "&gt;")
+        return f"""<div style="background:{_bg}; border:3px solid {_bd}; border-radius:12px; padding:14px 12px; margin:6px 0;"><div style="font-size:22px; font-weight:900; color:#FFFFFF; line-height:1.2;">{_big}</div><div style="font-size:14px; color:#FFFFFF; margin-top:6px; line-height:1.4;">{_sub}</div></div>"""
+    except Exception:
+        return f"{big_text} - {sub_text}"
 
 # =====================================================================
 # V100 INTELLIGENT DECISION - 26 Nov 2026 - Bhai ne sahi tok diya: "bina soche kuch bhi bana diya"
@@ -12321,17 +12352,24 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         * **Institutional Barriers:** Call Wall `{gex_info['call_wall']:,.0f}` | Put Wall `{gex_info['put_wall']:,.0f}` | 1-Sigma Expected Move: `\u00B1{gex_info['expected_move']:,.1f} Pts`
         """)
 
-        if confluence["badge"] == "success":
-            st.success(f"### {confluence['signal']}\n**Action:** {confluence['action']} | **Confidence:** {confluence['confidence']}%\n\n{confluence['rationale']}")
-        elif confluence["badge"] == "error":
-            st.error(f"### {confluence['signal']}\n**Action:** {confluence['action']} | **Confidence:** {confluence['confidence']}%\n\n{confluence['rationale']}")
+        # V101 INTELLIGENT: Entry ka colour alag hai, Exit ka alag - dono ko mix mat karo.
+        # Galat demand hoti: PE entry ko bhi RED SELL bol dena. PE BUY karna matlab market ko SELL karna hai, PE ko SHORT karna nahi hai.
+        # Isliye entry me likha hai: GREEN = CE BUY KARO (upar jayega), RED = PE BUY KARO (neeche jayega), YELLOW = WAIT KARO / NO TRADE.
+        # RED ka matlab yahan PE ko SHORT karo nahi hai - ye sabse dangerous confusion hai, isliye words poore likhe hain.
+        _sig101 = str(confluence.get('signal','')).upper(); _act101 = str(confluence.get('action',''))
+        if "BUY" in _sig101 and "PE" not in _sig101:
+            st.markdown(_v101_box_html("GREEN", "🟢 BUY KARO - CE BUY KARO", f"{confluence['signal']} | Action: {_act101} | Confidence: {confluence['confidence']}% | {confluence['rationale']}"), unsafe_allow_html=True)
+        elif "BUY" in _sig101 and "PE" in _sig101:
+            st.markdown(_v101_box_html("RED", "🔴 PE BUY KARO - MARKET DOWN HAI", f"{confluence['signal']} | Action: {_act101} | Confidence: {confluence['confidence']}% | PE BUY karna = Market SELL side hai, PE SHORT karna nahi hai | {confluence['rationale']}"), unsafe_allow_html=True)
+        elif "SELL" in _sig101:
+            st.markdown(_v101_box_html("RED", "🔴 SELL KARO - NIKALO", f"{confluence['signal']} | Action: {_act101} | Confidence: {confluence['confidence']}% | {confluence['rationale']}"), unsafe_allow_html=True)
         else:
-            st.info(f"### {confluence['signal']}\n**Action:** {confluence['action']} | **Confidence:** {confluence['confidence']}%\n\n{confluence['rationale']}")
+            st.markdown(_v101_box_html("YELLOW", "🟡 WAIT KARO - NO TRADE", f"{confluence['signal']} | Action: {_act101} | Confidence: {confluence['confidence']}% | Sideways hai, jabardasti trade mat lo | {confluence['rationale']}"), unsafe_allow_html=True)
 
         st.markdown(f"### {SHIELD} Live Position Exit Monitor ({tf['smartapi']}) - 🔴 LIVE STREAMING")
         if st.button(f"🔄 REFRESH LIVE EXIT ({tf['smartapi']}) - Spot + LTP LIVE", key=f"refresh_exit_{tf['smartapi']}", use_container_width=True):
             _v81_safe_rerun()  # V55.4: cache clear hataya
-        st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | V100: CORE + BB + VIX LIVE - FII/Macro sirf Bias (BB + FII/DII/VIX + Gold/Silver/Crude/USD) + VETO - 1 RED light pe EMERGENCY nahi")
+        st.caption(f"🔴 LIVE | Last: {datetime.now(IST).strftime('%H:%M:%S IST')} | Spot + Premium LTP live | V101: GREEN=HOLD/BUY, YELLOW=HALF+HOLD, RED=SELL/NIKALO | CORE + BB + VIX LIVE - FII/Macro sirf Bias - 1 RED light pe EMERGENCY nahi")
         
         # Original header removed, now combined
         
@@ -12396,37 +12434,55 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                     "fii_dii": fii_dii if "fii_dii" in locals() else {}, "macro": macro_quotes if "macro_quotes" in locals() else {}, "macro_quotes": macro_quotes if "macro_quotes" in locals() else {}, "vix_now": _vix_now99, "vix_change": _vix_chg99, "breadth_adv_pct": None,
                 }
             except Exception: _m98_dash = {"last": float(spot or 0), "vwap": 0, "ema20": 0, "support": 0, "resistance": 0, "rsi": 50, "macd_hist": 0, "volume": 0, "avg_volume": 0, "last_candles": [], "pcr": float(pcr or 1.05)}
+            # V101 LEGEND - Ek hi rule har jagah, taaki colour dekh ke hi samajh aa jaye
+            _lg1, _lg2, _lg3 = st.columns(3)
+            with _lg1: st.markdown(_v101_box_html("GREEN", "🟢 GREEN = BUY / HOLD KARO", "Naya ho to BUY KARO, Active ho to HOLD KARO - Mat nikalo"), unsafe_allow_html=True)
+            with _lg2: st.markdown(_v101_box_html("YELLOW", "🟡 YELLOW = HALF + HOLD KARO", "Half nikalo, SL Entry pe lao, baaki HOLD"), unsafe_allow_html=True)
+            with _lg3: st.markdown(_v101_box_html("RED", "🔴 RED = SELL / NIKALO", "Full exit karo - Reversal confirm hai"), unsafe_allow_html=True)
             ex1, ex2 = st.columns(2)
             with ex1:
-                st.markdown(f"#### {GREEN_CIRCLE} Active Call (CE) - V100 Trap Check (BB + FII + Macro)")
+                st.markdown(f"#### {GREEN_CIRCLE} Active Call (CE) - V101 Decision Matrix")
                 try:
                     _v98ce = calculate_trap_vs_reversal_v100(price=_m98_dash.get("last", 0), vwap=_m98_dash.get("vwap", 0), ema20=_m98_dash.get("ema20", 0), breakout_level=_m98_dash.get("resistance", 0), support=_m98_dash.get("support", 0), resistance=_m98_dash.get("resistance", 0), rsi=_m98_dash.get("rsi", 50), macd_hist=_m98_dash.get("macd_hist", 0), adx=_m98_dash.get("adx", 20), volume=_m98_dash.get("volume", 0), avg_volume=_m98_dash.get("avg_volume", 0), last_candles=_m98_dash.get("last_candles", []), oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=_m98_dash.get("pcr", 1.05), pcr_prev=None, gex_flip=_m98_dash.get("gamma_flip", 0), max_pain=_m98_dash.get("max_pain", 0), gex_regime=_m98_dash.get("gex_regime", ""), premium_live=None, premium_entry=None, direction="BULLISH", tf_minutes=15, bb_upper=_m98_dash.get("bb_upper", 0), bb_lower=_m98_dash.get("bb_lower", 0), bb_pctb=_m98_dash.get("bb_pctb", None), bb_squeeze=_m98_dash.get("bb_squeeze", False), bb_width=_m98_dash.get("bb_width", 0), atr=_m98_dash.get("atr", 0), ema200=_m98_dash.get("ema200", 0), htf_bullish=_m98_dash.get("htf_bullish", None), fii_net=(_m98_dash.get("fii_dii", {}) or {}).get("fii_net", None), dii_net=(_m98_dash.get("fii_dii", {}) or {}).get("dii_net", None), combined_net=(_m98_dash.get("fii_dii", {}) or {}).get("combined", None), vix_now=_m98_dash.get("vix_now", None), vix_change=_m98_dash.get("vix_change", None), breadth_adv_pct=None, macro=_m98_dash.get("macro", {}), is_opening_candle=_m98_dash.get("is_opening_candle", False))
-                    if _v98ce.get("tier") == "TRAP":
-                        st.success(f"🪤 **TRAP - HOLD CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {' | '.join(_v98ce.get('trap_signals', [])[:2])}")
-                    elif _v98ce.get("tier") == "CAUTION":
-                        st.warning(f"🟡 **CAUTION CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {_v98ce.get('action','')}")
+                    _tier_ce101 = _v98ce.get("tier", "CAUTION")
+                    if _tier_ce101 == "TRAP":
+                        st.markdown(_v101_box_html("GREEN", "🟢 HOLD KARO - CE MAT NIKALO", f"TRAP hai | Score {_v98ce.get('score','?')}/14 | {_v98ce.get('label','')} | SL hi invalidation hai"), unsafe_allow_html=True)
+                    elif _tier_ce101 == "CAUTION":
+                        st.markdown(_v101_box_html("YELLOW", "🟡 HALF NIKALO + BAAKI HOLD KARO - CE", f"CAUTION | Score {_v98ce.get('score','?')}/14 | {_v98ce.get('action','')}"), unsafe_allow_html=True)
                     else:
-                        st.error(f"🔴 **CONFIRMED EXIT CE:** {_v98ce.get('label','')} | Score {_v98ce.get('score','?')}/11 | {_v98ce.get('action','')}")
+                        st.markdown(_v101_box_html("RED", "🔴 SELL KARO - CE NIKALO", f"CONFIRMED EXIT | Score {_v98ce.get('score','?')}/14 | {_v98ce.get('action','')}"), unsafe_allow_html=True)
                     _gstr98ce = " | ".join([str(g.get("name",""))[:12] + " " + str(g.get("pts")) + "/" + str(g.get("max")) for g in _v98ce.get("gates", [])])
-                    st.caption("V98 CE: " + _gstr98ce)
+                    st.caption("V101 CE: " + _gstr98ce + " | Score /14 hai")
                     if "DOJI" in str(light1.get("pattern", "")):
                         st.caption("Doji hai - sirf Trail SL to Cost, EXIT nahi.")
                 except Exception as _e98d:
-                    st.success(f"{CHECK} **HOLD CE:** V98 check error { _e98d} - data kam hai to EXIT nahi.")
+                    st.markdown(_v101_box_html("GREEN", "🟢 HOLD KARO - CE MAT NIKALO", f"Data kam hai to EXIT nahi - {_e98d}"), unsafe_allow_html=True)
             with ex2:
-                st.markdown(f"#### {RED_CIRCLE} Active Put (PE) - V100 Trap Check (BB + FII + Macro)")
+                st.markdown(f"#### {RED_CIRCLE} Active Put (PE) - V101 Decision Matrix")
                 try:
                     _v98pe = calculate_trap_vs_reversal_v100(price=_m98_dash.get("last", 0), vwap=_m98_dash.get("vwap", 0), ema20=_m98_dash.get("ema20", 0), breakout_level=_m98_dash.get("support", 0), support=_m98_dash.get("support", 0), resistance=_m98_dash.get("resistance", 0), rsi=_m98_dash.get("rsi", 50), macd_hist=_m98_dash.get("macd_hist", 0), adx=_m98_dash.get("adx", 20), volume=_m98_dash.get("volume", 0), avg_volume=_m98_dash.get("avg_volume", 0), last_candles=_m98_dash.get("last_candles", []), oi_ce_chg=None, oi_pe_chg=None, oi_buildup="", pcr=_m98_dash.get("pcr", 1.05), pcr_prev=None, gex_flip=_m98_dash.get("gamma_flip", 0), max_pain=_m98_dash.get("max_pain", 0), gex_regime=_m98_dash.get("gex_regime", ""), premium_live=None, premium_entry=None, direction="BEARISH", tf_minutes=15, bb_upper=_m98_dash.get("bb_upper", 0), bb_lower=_m98_dash.get("bb_lower", 0), bb_pctb=_m98_dash.get("bb_pctb", None), bb_squeeze=_m98_dash.get("bb_squeeze", False), bb_width=_m98_dash.get("bb_width", 0), atr=_m98_dash.get("atr", 0), ema200=_m98_dash.get("ema200", 0), htf_bullish=_m98_dash.get("htf_bullish", None), fii_net=(_m98_dash.get("fii_dii", {}) or {}).get("fii_net", None), dii_net=(_m98_dash.get("fii_dii", {}) or {}).get("dii_net", None), combined_net=(_m98_dash.get("fii_dii", {}) or {}).get("combined", None), vix_now=_m98_dash.get("vix_now", None), vix_change=_m98_dash.get("vix_change", None), breadth_adv_pct=None, macro=_m98_dash.get("macro", {}), is_opening_candle=_m98_dash.get("is_opening_candle", False))
-                    if _v98pe.get("tier") == "TRAP":
-                        st.success(f"🪤 **TRAP - HOLD PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {' | '.join(_v98pe.get('trap_signals', [])[:2])}")
-                    elif _v98pe.get("tier") == "CAUTION":
-                        st.warning(f"🟡 **CAUTION PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {_v98pe.get('action','')}")
+                    _tier_pe101 = _v98pe.get("tier", "CAUTION")
+                    if _tier_pe101 == "TRAP":
+                        st.markdown(_v101_box_html("GREEN", "🟢 HOLD KARO - PE MAT NIKALO", f"TRAP hai | Score {_v98pe.get('score','?')}/14 | {_v98pe.get('label','')} | SL hi invalidation hai"), unsafe_allow_html=True)
+                    elif _tier_pe101 == "CAUTION":
+                        st.markdown(_v101_box_html("YELLOW", "🟡 HALF NIKALO + BAAKI HOLD KARO - PE", f"CAUTION | Score {_v98pe.get('score','?')}/14 | {_v98pe.get('action','')}"), unsafe_allow_html=True)
                     else:
-                        st.error(f"🔴 **CONFIRMED EXIT PE:** {_v98pe.get('label','')} | Score {_v98pe.get('score','?')}/11 | {_v98pe.get('action','')}")
+                        st.markdown(_v101_box_html("RED", "🔴 SELL KARO - PE NIKALO", f"CONFIRMED EXIT | Score {_v98pe.get('score','?')}/14 | {_v98pe.get('action','')}"), unsafe_allow_html=True)
                     _gstr98pe = " | ".join([str(g.get("name",""))[:12] + " " + str(g.get("pts")) + "/" + str(g.get("max")) for g in _v98pe.get("gates", [])])
-                    st.caption("V98 PE: " + _gstr98pe)
+                    st.caption("V101 PE: " + _gstr98pe + " | Score /14 hai")
                 except Exception as _e98d2:
-                    st.success(f"{CHECK} **HOLD PE:** V98 check error {_e98d2} - data kam hai to EXIT nahi.")
+                    st.markdown(_v101_box_html("GREEN", "🟢 HOLD KARO - PE MAT NIKALO", f"Data kam hai to EXIT nahi - {_e98d2}"), unsafe_allow_html=True)
+            # V101 INTELLIGENT: Dono CAUTION ho to ye sabse important signal hai - market sideways hai, naya trade mat lo.
+            # Sirf colour badalne se ye samajh nahi aayega, isliye alag se banner hai.
+            try:
+                _tce101 = _v98ce.get("tier","") if "_v98ce" in locals() else ""; _tpe101 = _v98pe.get("tier","") if "_v98pe" in locals() else ""
+                if _tce101 == "CAUTION" and _tpe101 == "CAUTION":
+                    st.markdown(_v101_box_html("YELLOW", "🟡 DONO CAUTION = SIDEWAYS - NAYA TRADE MAT LO, WAIT KARO", "CE bhi CAUTION hai, PE bhi CAUTION hai - matlab market ko direction nahi hai. Jo position hai usme HALF + HOLD karo, nayi entry mat lo. Dono yellow hona bug nahi hai, sideways ka signal hai."), unsafe_allow_html=True)
+                elif _tce101 == "TRAP" and _tpe101 == "CONFIRMED":
+                    st.markdown(_v101_box_html("GREEN", "🟢 CE HOLD KARO - PE WALA NIKALO", "CE TRAP hai (HOLD), PE CONFIRMED hai (SELL). Tumhare paas jo hai usi ka action lo, dono ka nahi."), unsafe_allow_html=True)
+                elif _tpe101 == "TRAP" and _tce101 == "CONFIRMED":
+                    st.markdown(_v101_box_html("RED", "🔴 PE HOLD KARO - CE WALA NIKALO", "PE TRAP hai (HOLD), CE CONFIRMED hai (SELL). Tumhare paas jo hai usi ka action lo, dono ka nahi."), unsafe_allow_html=True)
+            except Exception: pass
             
             # V55.2 NEW: Auto check emergency exit from traffic lights and send Telegram
             try:
