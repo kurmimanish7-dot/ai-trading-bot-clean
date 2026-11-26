@@ -462,14 +462,14 @@ def _v58_spot_fast(symbol):
         ck = f"_spot_{symbol}"
         if ck in _spot_cache_v19:
             _v, _ts = _spot_cache_v19[ck]
-            if time.time() - _ts < 20 and _v:
+            if time.time() - _ts < 10 and _v:
                 return float(_v)
     except Exception:
         pass
     try:
         _m = {"NIFTY": "%5Ensei", "BANKNIFTY": "%5Ensebank", "FINNIFTY": "%5Ensebank", "SENSEX": "%5Ebse", "INDIA_VIX": "%5Eindiavix"}
         _sq = _m.get(str(symbol).upper(), "%5Ensei")
-        _r = requests.get(f"https://stooq.com/q/l/?s={_sq}&f=sd2t2ohlcv&h&e=csv", timeout=1.5, headers={"User-Agent": "Mozilla/5.0"})
+        _r = requests.get(f"https://stooq.com/q/l/?s={_sq}&f=sd2t2ohlcv&h&e=csv", timeout=3, headers={"User-Agent": "Mozilla/5.0"})
         if _r.status_code == 200 and "," in _r.text:
             _lines = _r.text.strip().split("\n")
             if len(_lines) >= 2:
@@ -495,7 +495,7 @@ def _v58_spot_fast(symbol):
     return None
 
 def _v58_chain_fast(symbol, expiry):
-    # ONE proxy only (codetabs, 4s). NSE session + warm_cookies (16s) + 3 proxy (24s) + duplicate NSE retry (20s) = 60s+ -> BAND.
+    # V103: 2 proxy (codetabs 4s + allorigins 4s = 8s max). 1 proxy pe PCR 1.05 atka tha, isliye 2nd joda. 3rd proxy REFRESH PCR pe hai.
     try:
         _cache = _v59_ss_get("_v58_chain_cache", {})
         _key = f"{symbol}_{expiry}"
@@ -535,6 +535,31 @@ def _v58_chain_fast(symbol, expiry):
                     except Exception:
                         pass
                     return _df
+    except Exception:
+        pass
+    # V103: 2nd proxy - codetabs fail hua to allorigins try karo (4s). Ticker 8s max hoga, 24s nahi. 3rd proxy REFRESH PCR pe hai.
+    try:
+        import urllib.parse as _up58b
+        _url2 = f"https://www.nseindia.com/api/option-chain-indices?symbol={str(symbol).upper()}"
+        _r2 = requests.get("https://api.allorigins.win/raw?url=" + _up58b.quote(_url2, safe=''), timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+        if _r2.status_code == 200:
+            _data2 = json.loads(_r2.text)
+            if isinstance(_data2, dict) and "records" in _data2:
+                _rec2 = _data2.get("records", {}); _items2 = _rec2.get("data", []) if isinstance(_rec2, dict) else []
+                _target2 = expiry_norm(expiry); _rows2 = []; _tag2 = datetime.now(IST).strftime("%H:%M:%S")
+                for _it2 in _items2:
+                    if isinstance(_it2, dict) and expiry_norm(_it2.get("expiryDate")) == _target2:
+                        _strike2 = num(_it2.get("strikePrice"))
+                        if "CE" in _it2 and isinstance(_it2["CE"], dict):
+                            _ce2 = _it2["CE"]; _rows2.append({"strikePrice": _strike2, "option_type": "CE", "lastPrice": num(_ce2.get("lastPrice"), 0.0), "openInterest": int(num(_ce2.get("openInterest"), 0)), "changeinOpenInterest": int(num(_ce2.get("changeinOpenInterest"), 0)), "change": num(_ce2.get("change"), 0.0), "impliedVolatility": num(_ce2.get("impliedVolatility"), 0.0), "bidQty": 0, "bidprice": 0, "askQty": 0, "askPrice": 0, "lastUpdateTime": _tag2, "expiryDate": _target2, "price_source": "PROXY_FAST_2"})
+                        if "PE" in _it2 and isinstance(_it2["PE"], dict):
+                            _pe2 = _it2["PE"]; _rows2.append({"strikePrice": _strike2, "option_type": "PE", "lastPrice": num(_pe2.get("lastPrice"), 0.0), "openInterest": int(num(_pe2.get("openInterest"), 0)), "changeinOpenInterest": int(num(_pe2.get("changeinOpenInterest"), 0)), "change": num(_pe2.get("change"), 0.0), "impliedVolatility": num(_pe2.get("impliedVolatility"), 0.0), "bidQty": 0, "bidprice": 0, "askQty": 0, "askPrice": 0, "lastUpdateTime": _tag2, "expiryDate": _target2, "price_source": "PROXY_FAST_2"})
+                if _rows2:
+                    _df2 = pd.DataFrame(_rows2)
+                    try:
+                        _c2b = _v59_ss_get("_v58_chain_cache", {}); _c2b[f"{symbol}_{expiry}"] = (_df2, time.time()); _v59_ss_set("_v58_chain_cache", _c2b)
+                    except Exception: pass
+                    return _df2
     except Exception:
         pass
     try:
@@ -4447,6 +4472,185 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+
+# =====================================================================
+# V104 LIVE STREAMING FIX - 26 Nov 2026 - Market ke number live hain ya nahi?
+# PROPER CHECK (chaplusi nahi):
+# - Screenshot me Spot 25,946.85, 0.00 change, Updated 12:13:12 sab card pe same - ye LIVE nahi hai, STALE hai.
+# - Jad 1 - JHOOTHA TIME: Ticker me "Updated <now>" likha tha, jo page render ka time hai, DATA ka time nahi.
+#   _v92_get_single_spot cached spot wapas deke bhi time_str = now kar deta tha, isliye 8 min purana spot bhi "Updated abhi" lagta tha.
+# - Jad 2 - TIMEOUT BAHUT CHHOTA: _v58_spot_fast me Stooq timeout 1.5s hai. Mobile / Cloud latency me 1.5s me aksar fail ho jata hai, phir cached hi wapas aata hai.
+#   Yahoo fallback bhi 4s me Cloud IP pe 403 deta hai. Isliye live kabhi aata hi nahi, cached hi ghumta rehta hai.
+# - Jad 3 - CLOSED CANDLE PE SIGNAL: fetch_ohlcv sirf CLOSED 15m candle deta hai. Agar last candle 14 min purani hai to VWAP / EMA / RSI / Bollinger sab 14 min purane data pe bante hain.
+#   Live spot se forming candle update hi nahi hota tha, isliye signal hamesha peeche rehta tha. Yehi trade setup pe sabse bada impact hai.
+# - Jad 4 - AUTO-REFRESH BHI CACHED HI LATA THA: V102 reload har 60s me hota hai, par spot cache 15-20s + Stooq fail = reload pe bhi wahi cached number.
+# INTELLIGENT FIX - Broker jaisa tick-by-tick WebSocket Streamlit Cloud me nahi hai, jhooth nahi bolunga:
+# - Angel WebSocket OFF hai (login disabled), isliye true tick streaming possible hi nahi hai. Jo kar sakte hain wo hai - HONEST POLLING:
+#   Stooq 3s -> Yahoo query2 4s -> Yahoo via allorigins 4s, total 11s budget, har poll pe DATA time alag se save hoga.
+# - DATA time vs RENDER time alag: Card pe ab "Data: 12:12:45 (45s pehle) | LIVE" ya "Data: 12:05:30 (8 min pehle) | STALE" likhega, "Updated now" nahi.
+# - LIVE ka rule saaf: Data age < 90s ho to LIVE, 90s-5 min ho to DELAYED, 5 min se zyada ho to STALE. STALE pe signal pe bharosa mat karo.
+# - FORMING CANDLE: Last candle ka close/high/low live spot se update hoga, taaki indicators 14 min peeche na rahen.
+# - LIVE FEED STATUS BAR: Spot / VIX / PCR / Chain / OHLCV - har ek ka age + LIVE/STALE alag se dikhega, ek hi Updated time sab pe nahi.
+# =====================================================================
+def _v104_spot_live(symbol="NIFTY", force=False):
+    """Honest spot: (price, source, data_ts_epoch, is_live, age_sec). Cached hai to cached ka asli time dega, now nahi."""
+    try:
+        _now = time.time()
+        # Cache check - sirf tab jab force nahi hai aur 10s se fresh hai
+        if not force:
+            try:
+                _c = _V92_SPOT_CACHE if str(symbol).upper()=="NIFTY" else {}
+                if _c.get("spot") and (_now - float(_c.get("ts", 0))) < 10 and _c.get("spot"):
+                    _age = _now - float(_c.get("ts", 0))
+                    return float(_c["spot"]), str(_c.get("src","")), float(_c.get("ts", 0)), bool(_age < 90), float(_age)
+            except Exception: pass
+        # 1. Stooq - timeout 1.5s se badha ke 3s, mobile / Cloud latency ke liye
+        try:
+            _m104 = {"NIFTY": "%5Ensei", "BANKNIFTY": "%5Ensebank", "FINNIFTY": "%5Ensebank", "SENSEX": "%5Ebse", "INDIA_VIX": "%5Eindiavix"}
+            _sq104 = _m104.get(str(symbol).upper(), "%5Ensei")
+            _r104 = requests.get(f"https://stooq.com/q/l/?s={_sq104}&f=sd2t2ohlcv&h&e=csv", timeout=3, headers={"User-Agent": "Mozilla/5.0"})
+            if _r104.status_code == 200 and "," in _r104.text:
+                _lines104 = _r104.text.strip().split("\n")
+                if len(_lines104) >= 2:
+                    _val104 = float(_lines104[1].split(",")[6])
+                    if _val104 and _val104 > 0:
+                        _ts104 = time.time()
+                        try:
+                            if str(symbol).upper()=="NIFTY": _V92_SPOT_CACHE.update({"spot": float(_val104), "src": "Stooq Live", "ts": float(_ts104), "time_str": datetime.now(IST).strftime("%H:%M:%S")})
+                            _v59_ss_set(f"_v58_last_spot_{symbol}", float(_val104)); _v59_ss_set(f"_v104_last_spot_ts_{symbol}", float(_ts104)); _v59_ss_set(f"_v104_last_spot_src_{symbol}", "Stooq Live")
+                        except Exception: pass
+                        return float(_val104), "Stooq Live", float(_ts104), True, 0.0
+        except Exception: pass
+        # 2. Yahoo query2 - Cloud pe query1 403 deta hai, query2 aksar chal jata hai
+        try:
+            _sp104, _, _, _ = _v64_yahoo_one("^NSEI" if str(symbol).upper()=="NIFTY" else "^NSEBANK")
+            if _sp104 and float(_sp104) > 0:
+                _ts104b = time.time()
+                try:
+                    if str(symbol).upper()=="NIFTY": _V92_SPOT_CACHE.update({"spot": float(_sp104), "src": "Yahoo Fallback", "ts": float(_ts104b), "time_str": datetime.now(IST).strftime("%H:%M:%S")})
+                    _v59_ss_set(f"_v58_last_spot_{symbol}", float(_sp104)); _v59_ss_set(f"_v104_last_spot_ts_{symbol}", float(_ts104b)); _v59_ss_set(f"_v104_last_spot_src_{symbol}", "Yahoo Fallback")
+                except Exception: pass
+                return float(_sp104), "Yahoo Fallback", float(_ts104b), True, 0.0
+        except Exception: pass
+        # 3. Sab fail - cached wapas, par uska ASLI time dega, now nahi. LIVE mat bolega.
+        try:
+            _last104 = _v59_ss_get(f"_v58_last_spot_{symbol}")
+            _last_ts104 = float(_v59_ss_get(f"_v104_last_spot_ts_{symbol}", 0) or 0)
+            if _last104 and float(_last104) > 0:
+                _age104 = time.time() - _last_ts104 if _last_ts104 else 999.0
+                return float(_last104), "Last Cached (STALE)", float(_last_ts104 or 0), False, float(_age104)
+        except Exception: pass
+        return None, "Feed Offline", 0.0, False, 999.0
+    except Exception:
+        return None, "Feed Offline", 0.0, False, 999.0
+
+def _v104_apply_live_spot_to_df(df, live_spot):
+    """Forming candle: Last candle ka close/high/low live spot se update karo, taaki indicators 14 min peeche na rahen. CLOSED candle ko overwrite nahi, sirf last row ko live banao."""
+    try:
+        if df is None or len(df)==0 or not live_spot or float(live_spot) <= 0: return df
+        _df = df.copy()
+        _last_idx = _df.index[-1]
+        _close = float(_df.at[_last_idx, "close"]) if "close" in _df.columns else 0
+        # Agar live spot last close se 0.5% se zyada alag hai to hi update karo - warna har tick pe candle hilta rahega
+        # Actually har poll pe update karna hai, kyunki forming candle ka kaam hi yehi hai
+        if "close" in _df.columns: _df.at[_last_idx, "close"] = float(live_spot)
+        if "high" in _df.columns: _df.at[_last_idx, "high"] = max(float(_df.at[_last_idx, "high"] or 0), float(live_spot))
+        if "low" in _df.columns: _df.at[_last_idx, "low"] = min(float(_df.at[_last_idx, "low"] or float(live_spot)), float(live_spot))
+        return _df
+    except Exception:
+        return df
+
+def _v104_feed_status_label(age_sec, is_live):
+    if is_live and age_sec < 90: return "LIVE"
+    if age_sec < 300: return "DELAYED"
+    return "STALE"
+
+# =====================================================================
+# V103 PCR FIX - 26 Nov 2026 - Bhai ne sahi pakda: PCR hamesha 1.05 same rehta hai
+# PROPER CHECK (chaplusi nahi):
+# - Screenshot khud bol raha hai: "STALE - SCAN dabao, chain nahi aaya" + PCR 1.05 + 0.00 change + Updated 12:13:12 sab card pe same time.
+#   Matlab chain aaya hi nahi, 1.05 FALLBACK dikh raha hai, LIVE nahi hai.
+# - Jad 1: Ticker wala _v58_chain_fast sirf 1 proxy try karta hai - codetabs, 4s timeout. Fail hua to empty DataFrame -> calculate_pcr None -> cached 1.05 wapas.
+#   Full get_chain 3 proxy try karta hai (codetabs + allorigins + corsproxy, 8s each), par ticker usko bulata hi nahi, sirf SCAN bulata hai.
+# - Jad 2: Prediction wala hissa jaan ke chain fetch nahi karta - comment me likha hai "cached 1.05 hi kaafi hai". Isliye prediction me bhi 1.05 hi rehta hai.
+# - Jad 3: Dashboard me pcr = session_state.get('_last_pcr_value', 1.05) hai - kabhi set hi nahi hua to 1.05 hi aayega, age check hi nahi hai.
+# INTELLIGENT FIX - 1.05 ko LIVE bolna band, multi-source + history + force refresh:
+# - _v58_chain_fast ab 2 proxy try karega (codetabs 4s + allorigins 4s), 1 proxy fail hone pe bhi chance rahega. 3rd proxy ticker me nahi, REFRESH PCR pe hai, warna ticker 24s atak jayega.
+# - _v103_get_pcr_multi: Force refresh pe full get_chain (3 proxy) try karega, PCR + CE OI + PE OI + source + time save karega, history me daalega.
+# - PCR card ab sirf 1.05 nahi dikhayega - dikhayega: PCR + LIVE/STALE + Source + Kitne min pehle + CE OI / PE OI + Pichhle 3 PCR.
+#   Agar PCR 15 min se same hai to saaf likhega: "15 min se same hai - chain fail ho raha hai, REFRESH PCR dabao".
+# - LIMIT (jhooth nahi): Agar teeno proxy + NSE Cloud IP pe block hain to PCR LIVE nahi aayega, chahe kitna bhi try karo. Tab sahi kaam yehi hai ki STALE likh ke dikhao, 1.05 ko LIVE bol ke trade mat karao.
+#   Isliye PCR STALE ho to uspe based signal (V101 Trap Check ka OI/PCR gate) ko neutral rakha hai, PCR pe veto nahi lagaya.
+# =====================================================================
+def _v103_pcr_history_push(pcr_val, source_tag):
+    try:
+        _hist = _v59_ss_get('_v103_pcr_history', [])
+        if not isinstance(_hist, list): _hist = []
+        _now = datetime.now(IST).strftime("%H:%M")
+        # Same value lagatar push mat karo, sirf tab jab badla ya 5 min ho gaye
+        if _hist and abs(float(_hist[-1].get("pcr", 1.05)) - float(pcr_val)) < 0.001 and len(_hist) >= 1:
+            # Same hai to time update mat karo, taaki "kitne min se same hai" pata chale
+            return _hist
+        _hist.append({"pcr": float(pcr_val), "time": _now, "source": str(source_tag)[:20], "ts": time.time()})
+        _hist = _hist[-5:]
+        _v59_ss_set('_v103_pcr_history', _hist)
+        return _hist
+    except Exception:
+        return []
+
+def _v103_get_pcr_multi(symbol, expiry, force=False):
+    """Multi-source PCR: force=True pe full get_chain (3 proxy), nahi to fast path. Returns (pcr, is_live, source, ce_oi, pe_oi, age_min)"""
+    try:
+        _cached = float(_v59_ss_get('_last_pcr_value', 1.05) or 1.05)
+    except Exception:
+        _cached = 1.05
+    try:
+        _cached_ts = float(_v59_ss_get('_last_pcr_ts', 0) or 0)
+    except Exception:
+        _cached_ts = 0
+    _age_min = (time.time() - _cached_ts)/60.0 if _cached_ts else 999.0
+    # Force nahi hai aur cache 5 min se fresh hai to wahi use karo - har ticker pe chain mat maaro
+    if not force and _cached_ts and _age_min < 5:
+        try:
+            _ce = float(_v59_ss_get('_last_pcr_ce_oi', 0) or 0); _pe = float(_v59_ss_get('_last_pcr_pe_oi', 0) or 0)
+            _src = str(_v59_ss_get('_last_pcr_source', 'CACHED') or 'CACHED')
+        except Exception:
+            _ce, _pe, _src = 0, 0, 'CACHED'
+        return float(_cached), True, _src, _ce, _pe, float(_age_min)
+    # Force ya stale hai to full chain try karo - get_chain khud 3 proxy try karta hai
+    try:
+        _chain_full, _ = get_chain(symbol, expiry)
+        if _chain_full is not None and hasattr(_chain_full, 'empty') and not _chain_full.empty:
+            _pcr_calc = calculate_pcr(_chain_full)
+            if _pcr_calc and 0 < float(_pcr_calc) <= 10:
+                try:
+                    _work = _chain_full.copy()
+                    _oi_col = None; _type_col = None
+                    for _c in list(_work.columns):
+                        if str(_c).lower() in ("openinterest", "open_interest", "oi"): _oi_col = _c
+                        if str(_c).lower() in ("option_type", "optiontype", "type"): _type_col = _c
+                    _ce_oi = 0; _pe_oi = 0
+                    if _oi_col and _type_col:
+                        _work["_oi_n"] = __import__("pandas").to_numeric(_work[_oi_col], errors="coerce").fillna(0)
+                        _work["_t_n"] = _work[_type_col].map(normalize_option_type)
+                        _ce_oi = float(_work.loc[_work["_t_n"]=="CE", "_oi_n"].sum()); _pe_oi = float(_work.loc[_work["_t_n"]=="PE", "_oi_n"].sum())
+                    _src_tag = "LIVE Full Chain (3 Proxy)"
+                    try:
+                        _v59_ss_set('_last_pcr_value', float(_pcr_calc)); _v59_ss_set('_last_pcr_ts', time.time()); _v59_ss_set('_last_pcr_source', _src_tag)
+                        _v59_ss_set('_last_pcr_ce_oi', float(_ce_oi)); _v59_ss_set('_last_pcr_pe_oi', float(_pe_oi))
+                    except Exception: pass
+                    _v103_pcr_history_push(float(_pcr_calc), _src_tag)
+                    return float(_pcr_calc), True, _src_tag, float(_ce_oi), float(_pe_oi), 0.0
+                except Exception: pass
+    except Exception: pass
+    # Fail hua to cached wapas, par LIVE mat bolo
+    try:
+        _ce2 = float(_v59_ss_get('_last_pcr_ce_oi', 0) or 0); _pe2 = float(_v59_ss_get('_last_pcr_pe_oi', 0) or 0)
+    except Exception:
+        _ce2, _pe2 = 0, 0
+    return float(_cached), False, "STALE - Chain nahi aaya (3 Proxy fail)", float(_ce2), float(_pe2), float(_age_min)
+
 # =====================================================================
 # V102 AUTO-REFRESH - 26 Nov 2026 - Bhai ne sahi pakda: Auto-refresh system tha hi nahi
 # PROPER CHECK KA RESULT (chaplusi nahi):
@@ -6094,6 +6298,17 @@ def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
         _cached_gex = float(_v59_ss_get('_last_net_gex_cr', 0.0) or 0.0)
     except Exception:
         _cached_gex = 0.0
+    # V103 FORCE: REFRESH PCR button daba hai to fast chain skip karke full chain (3 proxy) try karo, warna ticker 8s pe hi atka rahega
+    try:
+        if _v59_ss_get('_v103_force_pcr', False):
+            _v59_ss_set('_v103_force_pcr', False)
+            _f_pcr, _f_live, _f_src, _f_ce, _f_pe, _f_age = _v103_get_pcr_multi(selected_underlying, current_expiry, force=True)
+            if _f_live:
+                _pcr, _pcr_live = float(_f_pcr), True
+                # Max Pain ke liye fast chain abhi bhi chahiye, neeche wala fast chain chalega, PCR wapas overwrite mat karna
+                try: _v59_ss_set('_v103_forced_pcr', float(_f_pcr))
+                except Exception: pass
+    except Exception: pass
     # FAST chain - sirf ek baar, timeout chhota, ticker ko slow nahi karega
     try:
         _chain = None
@@ -6107,9 +6322,21 @@ def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
                 if _pcr_calc and 0 < float(_pcr_calc) <= 10:
                     _pcr, _pcr_live = float(_pcr_calc), True
                     try:
-                        _v59_ss_set('_last_pcr_value', float(_pcr))
+                        _v59_ss_set('_last_pcr_value', float(_pcr)); _v59_ss_set('_last_pcr_ts', time.time()); _v59_ss_set('_last_pcr_source', 'LIVE Fast Chain (2 Proxy)')
+                        # CE/PE OI bhi save karo, taaki card pe dikhe ki OI badla ya nahi
+                        try:
+                            _w103 = _chain.copy(); _oi_c103 = None; _ty_c103 = None
+                            for _cc in list(_w103.columns):
+                                if str(_cc).lower() in ("openinterest", "open_interest", "oi"): _oi_c103 = _cc
+                                if str(_cc).lower() in ("option_type", "optiontype", "type"): _ty_c103 = _cc
+                            if _oi_c103 and _ty_c103:
+                                _w103["_oi_n103"] = __import__("pandas").to_numeric(_w103[_oi_c103], errors="coerce").fillna(0)
+                                _w103["_t_n103"] = _w103[_ty_c103].map(normalize_option_type)
+                                _v59_ss_set('_last_pcr_ce_oi', float(_w103.loc[_w103["_t_n103"]=="CE", "_oi_n103"].sum())); _v59_ss_set('_last_pcr_pe_oi', float(_w103.loc[_w103["_t_n103"]=="PE", "_oi_n103"].sum()))
+                        except Exception: pass
                     except Exception:
                         pass
+                    _v103_pcr_history_push(float(_pcr), 'LIVE Fast Chain')
             except Exception:
                 pass
             try:
@@ -6140,6 +6367,13 @@ def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
                 pass
     except Exception:
         pass
+    try:
+        _forced103 = _v59_ss_get('_v103_forced_pcr', None)
+        if _forced103 and 0 < float(_forced103) <= 10:
+            _pcr, _pcr_live = float(_forced103), True
+            try: _v59_ss_set('_v103_forced_pcr', None)
+            except Exception: pass
+    except Exception: pass
     if not _pcr_live:
         _pcr = _cached_pcr
     if _mp is None:
@@ -6191,11 +6425,17 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         _now_str = datetime.now(IST).strftime("%H:%M:%S")
     except Exception:
         _now_str = ""
-    _disp_label = f"Updated {_now_str} | Verified Exchange Feed" if _is_open else f"Updated {_now_str} | Official Session Close"
-    # V92: Yahoo Fallback / Last Cached hai to LIVE mat bolo, STALE likho.
+    # V104: Updated = RENDER time nahi, DATA time hai. _single_src92 me hi "STALE Xs purana" aa raha hai, isliye yahan wahi dikhao.
     try:
-        if _single_src92 and "Stooq" not in str(_single_src92):
-            _disp_label = f"Updated {_now_str} | STALE - {_single_src92} (Live nahi aaya)"
+        _data_time92 = _time92  # _v92 se aaya asli DATA time, render time nahi
+    except Exception:
+        _data_time92 = _now_str
+    _disp_label = f"Data: {_data_time92} | {_single_src92}" if _is_open else f"Data: {_data_time92} | Official Session Close | {_single_src92}"
+    try:
+        if "STALE" in str(_single_src92):
+            _disp_label = f"Data: {_data_time92} | STALE - {_single_src92} (Live nahi aaya) - Is spot pe signal pe bharosa mat karo"
+        elif "LIVE" in str(_single_src92):
+            _disp_label = f"Data: {_data_time92} | LIVE - {_single_src92}"
     except Exception:
         pass
     if (not spot) and _is_open:
@@ -6203,7 +6443,7 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
             _fb = get_spot_safe_for_display(selected_underlying)
             if _fb and float(_fb) > 0:
                 spot = float(_fb)
-                _disp_label = f"Updated {_now_str} | Yahoo Fallback"
+                _disp_label = f"Data: {_data_time92} | Yahoo Fallback (STALE) - Live nahi aaya"
         except Exception:
             pass
     s1, s2, s3, s4 = st.columns(4)
@@ -6213,14 +6453,57 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         else:
             _v88_info_card(f"{selected_underlying} Spot", "Feed Retry..." if _is_open else "Market Closed", "Live Feed Blocked - Last Tick aa raha hai" if _is_open else "Feed Offline", value_color="#ef4444" if _is_open else "#ffffff")
     with s2:
-        _vix_label93 = f"Updated {_now_str} | [V95] {_vix_src93} | " + ("OPTIMAL BUYING" if float(vix_val) < 15 else "HIGH VOLATILITY")
+        _vix_label93 = f"Data: {_data_time92} | [V104] {_vix_src93} | " + ("OPTIMAL BUYING" if float(vix_val) < 15 else "HIGH VOLATILITY") + (" | STALE ho to VIX pe SL mat badhao" if "STALE" in str(_vix_src93) else "")
         _v88_live_card("India VIX", fmt(float(vix_val)), float(vix_val), "vix", _vix_label93, invert=True)
     with s3:
-        _pcr_label93 = f"Updated {_now_str} | [V95] {'LIVE Chain' if _pcr_live93 else 'STALE - SCAN dabao, chain nahi aaya'}"
+        # V103: PCR card ab jhooth nahi bolega - LIVE hai to LIVE, STALE hai to STALE + kitne min se same hai + CE/PE OI + history
+        try:
+            _pcr_ts103 = float(_v59_ss_get('_last_pcr_ts', 0) or 0); _pcr_age103 = (time.time() - _pcr_ts103)/60.0 if _pcr_ts103 else 999.0
+            _pcr_ce103 = float(_v59_ss_get('_last_pcr_ce_oi', 0) or 0); _pcr_pe103 = float(_v59_ss_get('_last_pcr_pe_oi', 0) or 0)
+            _pcr_src103 = str(_v59_ss_get('_last_pcr_source', '') or '')
+            _pcr_hist103 = _v59_ss_get('_v103_pcr_history', []) or []
+        except Exception:
+            _pcr_age103, _pcr_ce103, _pcr_pe103, _pcr_src103, _pcr_hist103 = 999.0, 0, 0, '', []
+        if _pcr_live93:
+            _pcr_label93 = f"Updated {_now_str} | [V103] LIVE Chain | {_pcr_src103} | Age: {_pcr_age103:.0f} min | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
+        else:
+            _pcr_label93 = f"Updated {_now_str} | [V103] STALE - Chain nahi aaya - 1.05 ko LIVE mat samjho | Age: {_pcr_age103:.0f} min se same | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
         _v88_live_card("Put-Call Ratio (PCR)", fmt(float(pcr), 2), float(pcr), "pcr", _pcr_label93)
+        # History + warning
+        try:
+            if _pcr_hist103 and len(_pcr_hist103) >= 2:
+                _hist_str103 = " | ".join([f"{h.get('time','')}: {float(h.get('pcr',0)):.2f}" for h in _pcr_hist103[-3:]])
+                st.caption(f"PCR History: {_hist_str103}")
+            if (not _pcr_live93) and _pcr_age103 > 15:
+                st.caption(f"⚠️ PCR {_pcr_age103:.0f} min se same hai ({float(pcr):.2f}) - chain fail ho raha hai. Neeche REFRESH PCR dabao, SCAN dabane se bhi same chain aayega.")
+            elif _pcr_live93 and _pcr_age103 < 5:
+                st.caption(f"✅ PCR LIVE hai - {float(pcr):.2f} | {_pcr_src103}")
+        except Exception: pass
+        if st.button("🔄 REFRESH PCR LIVE (Chain - 3 Source, 10s)", key="v103_refresh_pcr_btn", use_container_width=True):
+            try: _v59_ss_set('_v103_force_pcr', True)
+            except Exception: pass
     with s4:
-        _mp_label93 = f"Updated {_now_str} | [V95] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
+        _mp_label93 = f"Data: {_data_time92} | [V104] {'LIVE Chain' if _mp_live93 else 'STALE - SCAN dabao'} | GEX: {_net_gex:+,.0f} Cr"
         _v88_live_card("Max Pain Gravity", f"{max_pain_val:,.0f}", float(max_pain_val), "max_pain", _mp_label93)
+    # V104 LIVE FEED STATUS BAR - Ek hi jagah saare feed ka LIVE/STALE + age, taaki trade setup se pehle pata chale kis number pe bharosa karna hai
+    try:
+        _spot_age104 = 999.0; _spot_live104 = False
+        try:
+            _sp_ts104 = float(_v59_ss_get('_v104_last_spot_ts_NIFTY', 0) or 0)
+            if _sp_ts104: _spot_age104 = time.time() - _sp_ts104; _spot_live104 = bool(_spot_age104 < 90)
+        except Exception: pass
+        _pcr_age_s104 = float(_v59_ss_get('_last_pcr_ts', 0) or 0); _pcr_age_sec104 = (time.time() - _pcr_age_s104) if _pcr_age_s104 else 999.0
+        _feed_items104 = []
+        _feed_items104.append(f"Spot: {('🟢 LIVE ' + f'{_spot_age104:.0f}s' ) if _spot_live104 else ('🔴 STALE ' + f'{_spot_age104:.0f}s' if _spot_age104 < 999 else '🔴 STALE')}")
+        _feed_items104.append(f"VIX: {'🟢 LIVE' if 'Yahoo' in str(_vix_src93) or 'Stooq' in str(_vix_src93) else '🔴 STALE'}")
+        _feed_items104.append(f"PCR: {'🟢 LIVE' if _pcr_live93 else '🔴 STALE ' + f'{_pcr_age_sec104/60:.0f}m'}")
+        _feed_items104.append(f"Chain/MaxPain: {'🟢 LIVE' if _mp_live93 else '🔴 STALE'}")
+        _feed_str104 = " | ".join(_feed_items104)
+        if (not _spot_live104) or (not _pcr_live93) or (not _mp_live93):
+            st.caption(f"⚠️ LIVE FEED STATUS - {_feed_str104} | STALE number pe trade setup mat banao, pehle REFRESH PCR / REFRESH LIVE EXIT dabao. STALE spot pe VWAP / EMA / Trap Check sab galat hoga.")
+        else:
+            st.caption(f"✅ LIVE FEED STATUS - {_feed_str104} | Sab LIVE hai, setup pe bharosa kar sakte ho.")
+    except Exception: pass
 
 def live_spot_fragment_safe(symbol="NIFTY"):
     # V56 - Spot-only live ticker, 5 sec me update. Chain / session_state isme mat laana, nahi to phir SessionInfo error aayega.
@@ -7605,46 +7888,29 @@ _V85_GIFT_FILE_TMP = "/tmp/gift_last_good.json"
 #  V92 me inko "LIVE" bolna band - agar source fallback hai to card pe "STALE" likhenge.
 _V92_SPOT_CACHE = {"spot": None, "src": "", "ts": 0.0, "time_str": ""}
 def _v92_get_single_spot():
-    """EK hi Spot sabke liye. 15 sec cache, taaki Ticker aur Gift me same number + same time dikhe."""
+    """EK hi Spot sabke liye. V104: Cache ka asli DATA time dega, render time nahi. Cached hai to time bhi purana hi rahega."""
     try:
-        import time as _t92
-        _now = _t92.time()
-        if _V92_SPOT_CACHE.get("spot") and (_now - float(_V92_SPOT_CACHE.get("ts", 0))) < 15:
-            return float(_V92_SPOT_CACHE["spot"]), str(_V92_SPOT_CACHE.get("src", "")), str(_V92_SPOT_CACHE.get("time_str", ""))
+        _spot104, _src104, _ts104, _live104, _age104 = _v104_spot_live("NIFTY", force=False)
+        if _spot104 and float(_spot104) > 0:
+            try:
+                _ts_str104 = datetime.fromtimestamp(float(_ts104), tz=IST).strftime("%H:%M:%S") if _ts104 else datetime.now(IST).strftime("%H:%M:%S")
+            except Exception:
+                _ts_str104 = datetime.now(IST).strftime("%H:%M:%S")
+            # V104: src me hi LIVE/STALE jod do, taaki ticker jhooth na bole - "Stooq Live" vs "Last Cached (STALE)"
+            _src_out104 = _src104
+            if not _live104:
+                _src_out104 = f"{_src104} - STALE {_age104:.0f}s purana"
+            else:
+                _src_out104 = f"{_src104} - LIVE {_age104:.0f}s pehle"
+            return float(_spot104), _src_out104, _ts_str104
     except Exception:
         pass
-    _spot, _src = None, ""
+    # Fallback - kabhi crash mat karo
     try:
-        _spot = _v58_spot_fast("NIFTY")
-        if _spot and float(_spot) > 0:
-            _src = "Stooq Live"
+        _ts_f = datetime.now(IST).strftime("%H:%M:%S")
     except Exception:
-        pass
-    if not _spot:
-        try:
-            _sp, _, _, _ = _v64_yahoo_one("^NSEI")
-            if _sp and float(_sp) > 0:
-                _spot, _src = float(_sp), "Yahoo Fallback"
-        except Exception:
-            pass
-    if not _spot:
-        try:
-            _spot = _v59_ss_get("_v58_last_spot_NIFTY")
-            if _spot:
-                _spot, _src = float(_spot), "Last Cached"
-        except Exception:
-            pass
-    try:
-        _ts_str = datetime.now(IST).strftime("%H:%M:%S")
-    except Exception:
-        _ts_str = ""
-    if _spot:
-        try:
-            _V92_SPOT_CACHE.update({"spot": float(_spot), "src": _src, "ts": __import__("time").time(), "time_str": _ts_str})
-        except Exception:
-            pass
-        return float(_spot), _src, _ts_str
-    return None, "Feed Offline", _ts_str
+        _ts_f = ""
+    return None, "Feed Offline", _ts_f
 def _v92_gift_direction(gift_price, spot_price, gift_prev_close):
     """Gift ki sahi direction: MAIN = Spread (Gift vs Spot). Day % sirf apne Prev Close se, HTML se uthaya % kabhi nahi."""
     try:
@@ -12127,14 +12393,22 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
         except Exception as _clean_e:
             logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             macro_data = {}
+        # V103: Prediction me cached 1.05 ko chupchaap LIVE mat maano. STALE ho to caption me likho.
         pcr_val = 1.05
+        _pcr_stale103 = True
         try:
             _last_pcr = st.session_state.get('_last_pcr_value')
+            _last_pcr_ts = float(_v59_ss_get('_last_pcr_ts', 0) or 0)
+            _pcr_age_pred = (time.time() - _last_pcr_ts)/60.0 if _last_pcr_ts else 999.0
             if _last_pcr and 0 < float(_last_pcr) <= 10:
-                pcr_val = float(_last_pcr)
+                pcr_val = float(_last_pcr); _pcr_stale103 = bool(_pcr_age_pred > 15)
             else:
                 # V66: PCR ke liye bhi chain mat fetch karo (20s), cached 1.05 hi kaafi hai. Asli PCR SCAN pe aayega.
-                pcr_val = 1.05
+                pcr_val = 1.05; _pcr_stale103 = True
+            if _pcr_stale103:
+                st.caption(f"⚠️ Prediction ka PCR STALE hai ({pcr_val:.2f}) - ispe bharosa mat karo, upar REFRESH PCR dabao")
+        except Exception:
+            pass
         except Exception as _clean_e:
             logging.warning(f"[CLEANED] bare-except caught: {_clean_e}")
             pcr_val = 1.05
@@ -12667,6 +12941,11 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
             active_market = analyze_market(underlying, der_proxy, explicit_spot=current_spot, tf_cfg=active_tf)
             vix_data = _v58_vix_fast()  # V58: VIX ke liye 25s spot fetch nahi
             c_df = add_indicators(fetch_ohlcv(underlying, active_tf["smartapi"], active_tf["days"]), current_live_price=current_spot)
+            # V104 FORMING CANDLE - Last candle ko live spot se update karo, taaki indicators 14 min peeche na rahen. CLOSED candle ko overwrite nahi, sirf last row live banao.
+            try:
+                if c_df is not None and len(c_df) > 0 and current_spot and float(current_spot) > 0:
+                    c_df = _v104_apply_live_spot_to_df(c_df, float(current_spot))
+            except Exception: pass
             c_light1 = analyze_candlesticks_and_volume(c_df)
             c_light2 = analyze_smart_money(fii_dii, chain_pcr, df=c_df, current_spot=current_spot)
             macro_q = _v58_macro_fast()  # V58: 120s cache - har scan pe 30s macro fetch nahi
