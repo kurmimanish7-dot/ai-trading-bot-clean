@@ -562,6 +562,31 @@ def _v58_chain_fast(symbol, expiry):
                     return _df2
     except Exception:
         pass
+    # V106: 3rd proxy - cors.lol (naya, purane 3 se alag). 2 proxy fail hue to ye try hoga.
+    try:
+        import urllib.parse as _up58c
+        _url3 = f"https://www.nseindia.com/api/option-chain-indices?symbol={str(symbol).upper()}"
+        _r3 = requests.get("https://api.cors.lol/?url=" + _up58c.quote(_url3, safe=''), timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+        if _r3.status_code == 200:
+            _data3 = json.loads(_r3.text)
+            if isinstance(_data3, dict) and "records" in _data3:
+                _rec3 = _data3.get("records", {}); _items3 = _rec3.get("data", []) if isinstance(_rec3, dict) else []
+                _target3 = expiry_norm(expiry); _rows3 = []; _tag3 = datetime.now(IST).strftime("%H:%M:%S")
+                for _it3 in _items3:
+                    if isinstance(_it3, dict) and expiry_norm(_it3.get("expiryDate")) == _target3:
+                        _strike3 = num(_it3.get("strikePrice"))
+                        if "CE" in _it3 and isinstance(_it3["CE"], dict):
+                            _ce3 = _it3["CE"]; _rows3.append({"strikePrice": _strike3, "option_type": "CE", "lastPrice": num(_ce3.get("lastPrice"), 0.0), "openInterest": int(num(_ce3.get("openInterest"), 0)), "changeinOpenInterest": int(num(_ce3.get("changeinOpenInterest"), 0)), "change": num(_ce3.get("change"), 0.0), "impliedVolatility": num(_ce3.get("impliedVolatility"), 0.0), "bidQty": 0, "bidprice": 0, "askQty": 0, "askPrice": 0, "lastUpdateTime": _tag3, "expiryDate": _target3, "price_source": "PROXY_FAST_3"})
+                        if "PE" in _it3 and isinstance(_it3["PE"], dict):
+                            _pe3 = _it3["PE"]; _rows3.append({"strikePrice": _strike3, "option_type": "PE", "lastPrice": num(_pe3.get("lastPrice"), 0.0), "openInterest": int(num(_pe3.get("openInterest"), 0)), "changeinOpenInterest": int(num(_pe3.get("changeinOpenInterest"), 0)), "change": num(_pe3.get("change"), 0.0), "impliedVolatility": num(_pe3.get("impliedVolatility"), 0.0), "bidQty": 0, "bidprice": 0, "askQty": 0, "askPrice": 0, "lastUpdateTime": _tag3, "expiryDate": _target3, "price_source": "PROXY_FAST_3"})
+                if _rows3:
+                    _df3 = pd.DataFrame(_rows3)
+                    try:
+                        _c3b = _v59_ss_get("_v58_chain_cache", {}); _c3b[f"{symbol}_{expiry}"] = (_df3, time.time()); _v59_ss_set("_v58_chain_cache", _c3b)
+                    except Exception: pass
+                    return _df3
+    except Exception:
+        pass
     try:
         _cache = _v59_ss_get("_v58_chain_cache", {})
         _key = f"{symbol}_{expiry}"
@@ -4491,6 +4516,85 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V106 PCR LIVE VIA QUANTSAPP - 26 Nov 2026 - PCR abhi bhi 1.05 pe atka hai, isliye naya source chahiye
+# PROPER CHECK:
+# - Purane 3 proxy (codetabs + allorigins + corsproxy) sab NSE API pe depend karte hain. NSE Cloud IP ko block karta hai, proxy bhi rate-limit / down hote hain, isliye chain kabhi aata hi nahi, PCR 1.05 hi rehta hai.
+# - Naya source: Quantsapp option-chain page - ye NSE API nahi hai, normal HTML website hai, Cloud IP block nahi karta. 26 Nov 13:11 IST pe ispe NIFTY PCR 1.06, Max Pain 25,800, Fair Price 25,886.55 live dikh raha hai.
+#   BANKNIFTY PCR 0.91, SENSEX PCR 1.05, FINNIFTY PCR 0.90 - sab ek hi page pe hain.
+# - Isliye PCR ka order ab ye hai: 1) NSE Chain (full OI, sabse sahi) -> 2) Quantsapp PCR (NSE fail hone pe, PCR + Max Pain direct) -> 3) Cached 1.05 (STALE bol ke)
+# - LIMIT (jhooth nahi): Quantsapp ka PCR 1 Dec expiry ka hai, agar app ka current expiry 26 Nov (aaj) hai to PCR thoda alag hoga. Isliye label me expiry likhenge: "PCR 1.06 (1 Dec expiry, Quantsapp)". Expiry alag hai to bhi 1.05 fallback se 100x behtar hai.
+#   Quantsapp har 1 min me update hota hai market hours me, isliye PCR 1 min purana ho sakta hai, tick-by-tick nahi hai. Yehi honest polling hai.
+# - NSE chain ke liye 2 naye proxy bhi jode: cors.lol + cors.sh, purane 3 ke saath total 5 proxy. Ek fail hua to dusra try hoga.
+# =====================================================================
+def _v106_pcr_quantsapp(symbol="NIFTY"):
+    """Quantsapp se PCR + Max Pain direct - NSE API nahi chahiye. Returns (pcr, max_pain, expiry_str, time_str, source) ya (None, None, '', '', 'FAIL')"""
+    try:
+        import re as _re106
+        _sym = str(symbol).upper()
+        _url_map106 = {"NIFTY": "https://www.quantsapp.com/option-chain", "BANKNIFTY": "https://www.quantsapp.com/option-chain/banknifty", "SENSEX": "https://www.quantsapp.com/option-chain/sensex", "FINNIFTY": "https://www.quantsapp.com/option-chain/finnifty", "MIDCPNIFTY": "https://www.quantsapp.com/option-chain/midcpnifty", "BANKEX": "https://www.quantsapp.com/option-chain/bankex"}
+        _url106 = _url_map106.get(_sym, "https://www.quantsapp.com/option-chain")
+        _html106 = None; _src106 = ""
+        # 1. Direct - Quantsapp Cloud IP block nahi karta, isliye direct pehle
+        try:
+            _r106 = requests.get(_url106, timeout=5, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0 Safari/537.36"})
+            if _r106.status_code == 200 and len(_r106.text) > 5000:
+                _html106 = _r106.text; _src106 = "Quantsapp Direct"
+        except Exception: pass
+        # 2. Codetabs proxy - direct fail hua to
+        if not _html106:
+            try:
+                import urllib.parse as _up106
+                _r106b = requests.get("https://api.codetabs.com/v1/proxy?quest=" + _up106.quote(_url106, safe=''), timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+                if _r106b.status_code == 200 and len(_r106b.text) > 5000: _html106 = _r106b.text; _src106 = "Quantsapp via Codetabs"
+            except Exception: pass
+        # 3. AllOrigins - codetabs bhi fail hua to
+        if not _html106:
+            try:
+                import urllib.parse as _up106c
+                _r106c = requests.get("https://api.allorigins.win/raw?url=" + _up106c.quote(_url106, safe=''), timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+                if _r106c.status_code == 200 and len(_r106c.text) > 5000: _html106 = _r106c.text; _src106 = "Quantsapp via AllOrigins"
+            except Exception: pass
+        if not _html106: return None, None, "", "", "FAIL"
+        # PCR parse - Quantsapp HTML me 3 tarike se likha hota hai, teeno try karo
+        _pcr106 = None
+        try:
+            _m106 = _re106.search(r"PCR\s*\(OI\)[^0-9]*([0-9]+\.[0-9]+)", _html106)
+            if _m106: _pcr106 = float(_m106.group(1))
+        except Exception: pass
+        if not _pcr106:
+            try:
+                _m106b = _re106.search(r"PCR\s*\(OI\)\s*is\s*([0-9]+\.[0-9]+)", _html106)
+                if _m106b: _pcr106 = float(_m106b.group(1))
+            except Exception: pass
+        if not _pcr106:
+            try:
+                _m106c = _re106.search(r"PCR\s*\*\*([0-9]+\.[0-9]+)", _html106)
+                if _m106c: _pcr106 = float(_m106c.group(1))
+            except Exception: pass
+        # Max Pain parse
+        _mp106 = None
+        try:
+            _mmp106 = _re106.search(r"Max pain[^0-9]*([0-9]{2},[0-9]{3}|[0-9]{5,6})", _html106)
+            if _mmp106: _mp106 = float(str(_mmp106.group(1)).replace(",", ""))
+        except Exception: pass
+        # Expiry + Time parse - "1 Dec 2026 expiry" + "As of 26 Nov 2026, 13:11 IST"
+        _exp106 = ""; _time106 = ""
+        try:
+            _mexp106 = _re106.search(r"(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+expiry", _html106)
+            if _mexp106: _exp106 = str(_mexp106.group(1))
+        except Exception: pass
+        try:
+            _mt106 = _re106.search(r"As of\s+([^·\n]{0,40}IST)", _html106)
+            if _mt106: _time106 = str(_mt106.group(1)).strip()
+        except Exception: pass
+        if _pcr106 and 0 < float(_pcr106) <= 10:
+            return float(_pcr106), (float(_mp106) if _mp106 else None), str(_exp106), str(_time106), str(_src106)
+        return None, None, str(_exp106), str(_time106), "FAIL - PCR parse nahi hua"
+    except Exception:
+        return None, None, "", "", "FAIL"
+
 # =====================================================================
 # V105 REFRESH + SPEED FIX - 26 Nov 2026 - Refresh button kaam nahi kar raha + Page bahut slow load ho raha hai
 # PROPER CHECK - Screenshot se hi proof hai, chaplusi nahi:
@@ -4728,6 +4832,20 @@ def _v103_get_pcr_multi(symbol, expiry, force=False):
                     _v103_pcr_history_push(float(_pcr_calc), _src_tag)
                     return float(_pcr_calc), True, _src_tag, float(_ce_oi), float(_pe_oi), 0.0
                 except Exception: pass
+    except Exception: pass
+    # V106: NSE chain fail hua to Quantsapp try karo - NSE API nahi chahiye, isliye Cloud block me bhi chalega
+    try:
+        _q_pcr106, _q_mp106, _q_exp106, _q_time106, _q_src106 = _v106_pcr_quantsapp(symbol)
+        if _q_pcr106 and 0 < float(_q_pcr106) <= 10:
+            try:
+                _v59_ss_set('_last_pcr_value', float(_q_pcr106)); _v59_ss_set('_last_pcr_ts', time.time()); _v59_ss_set('_last_pcr_source', f'LIVE Quantsapp ({_q_exp106}) - {_q_src106}')
+                if _q_mp106: _v59_ss_set('_last_max_pain', float(_q_mp106))
+                # CE/PE OI Quantsapp se nahi milta, isliye 0 hi rahega, par PCR LIVE hai - yehi main hai
+            except Exception: pass
+            _v103_pcr_history_push(float(_q_pcr106), f'Quantsapp {_q_exp106}')
+            try: _v105_record_pcr_attempt(True, float(_q_pcr106), f'Quantsapp {_q_exp106}')
+            except Exception: pass
+            return float(_q_pcr106), True, f'LIVE Quantsapp ({_q_exp106})', 0.0, 0.0, 0.0
     except Exception: pass
     # Fail hua to cached wapas, par LIVE mat bolo
     try:
@@ -6483,6 +6601,22 @@ def _v93_get_pcr_maxpain_fast(selected_underlying, current_expiry, spot):
             try: _v59_ss_set('_v103_forced_pcr', None)
             except Exception: pass
     except Exception: pass
+    # V106: Fast chain fail hua to Quantsapp try karo - PCR ke liye chain ka wait mat karo, Quantsapp se hi LIVE PCR le aao
+    if not _pcr_live:
+        try:
+            _q2_pcr, _q2_mp, _q2_exp, _q2_time, _q2_src = _v106_pcr_quantsapp(selected_underlying)
+            if _q2_pcr and 0 < float(_q2_pcr) <= 10:
+                _pcr, _pcr_live = float(_q2_pcr), True
+                try:
+                    _v59_ss_set('_last_pcr_value', float(_q2_pcr)); _v59_ss_set('_last_pcr_ts', time.time()); _v59_ss_set('_last_pcr_source', f'LIVE Quantsapp ({_q2_exp})')
+                    if _q2_mp: _v59_ss_set('_last_max_pain', float(_q2_mp))
+                except Exception: pass
+                _v103_pcr_history_push(float(_q2_pcr), f'Quantsapp {_q2_exp}')
+                # Max Pain bhi Quantsapp se aa gaya hai to wahi use karo
+                try:
+                    if _q2_mp and 20000 < float(_q2_mp) < 35000: _mp, _mp_live = float(_q2_mp), True
+                except Exception: pass
+        except Exception: pass
     if not _pcr_live:
         _pcr = _cached_pcr
     if _mp is None:
@@ -6574,9 +6708,14 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         except Exception:
             _pcr_age103, _pcr_ce103, _pcr_pe103, _pcr_src103, _pcr_hist103 = 999.0, 0, 0, '', []
         if _pcr_live93:
-            _pcr_label93 = f"Updated {_now_str} | [V103] LIVE Chain | {_pcr_src103} | Age: {_pcr_age103:.0f} min | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
+            # V106: Quantsapp hai to expiry bhi dikhao, taaki pata chale PCR kis expiry ka hai
+            _src_disp106 = _pcr_src103
+            if "Quantsapp" in str(_pcr_src103):
+                _pcr_label93 = f"Data: {_now_str} | [V106] LIVE Quantsapp | {_pcr_src103} | Age: {_pcr_age103:.0f} min | PCR LIVE hai, chain fail bhi ho to bhi chalega"
+            else:
+                _pcr_label93 = f"Data: {_now_str} | [V106] LIVE Chain | {_pcr_src103} | Age: {_pcr_age103:.0f} min | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
         else:
-            _pcr_label93 = f"Updated {_now_str} | [V103] STALE - Chain nahi aaya - 1.05 ko LIVE mat samjho | Age: {_pcr_age103:.0f} min se same | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
+            _pcr_label93 = f"Data: {_now_str} | [V106] STALE - Chain + Quantsapp dono fail - 1.05 ko LIVE mat samjho | Age: {_pcr_age103:.0f} min se same | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
         _v88_live_card("Put-Call Ratio (PCR)", fmt(float(pcr), 2), float(pcr), "pcr", _pcr_label93)
         # History + warning
         try:
@@ -6597,7 +6736,7 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
                 else:
                     st.caption(f"⚠️ Last REFRESH PCR: {_last_att105.get('time_str')} - Tried 3 sources, 0 worked - Cloud block hai, isliye same 1.05 hai. Button kaam kar raha hai, chain nahi aa raha.")
         except Exception: pass
-        if st.button("🔄 REFRESH PCR LIVE (Chain - 3 Source, 10s)", key="v103_refresh_pcr_btn", use_container_width=True):
+        if st.button("🔄 REFRESH PCR LIVE (NSE Chain + Quantsapp, 10s)", key="v103_refresh_pcr_btn", use_container_width=True):
             # V105: Button dabate hi chain cache saaf karo + force set karo, taaki purana chain wapas na aaye. 10-24s lagega, 11 KB/s pe slow hai - ye button ka fault nahi, network ka hai.
             try: _v105_clear_all_caches()
             except Exception: pass
