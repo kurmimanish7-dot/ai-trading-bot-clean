@@ -4533,6 +4533,158 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V110 - 27 Nov 2026 - 1 CANDLE = NOISE, 2 CLOSED CANDLE = CONFIRMATION
+# USER KA SAWAAL (sahi hai, chaplusi nahi): "Ek candle change hote hi signal change karne ki jaroorat hai kya? Next candle opposite, uske next favour me, hum FOMO me loss/at par nikal jaate hai."
+# JAWAB: NAHI. 1 candle kabhi confirmation nahi hai. V110 me ye rule hai:
+# - 1 opposite candle (forming ya 1 closed) = NOISE -> HOLD, signal change nahi hoga, EXIT nahi hoga.
+# - 2 consecutive CLOSED opposite candles + Fib break + Volume/OI confirm = REAL REVERSAL -> tabhi EXIT/FLIP hoga.
+# - 1 opposite + 1 favour (wapas) = TRAP THA, FOMO se bach gaye. Isliye HOLD karna sahi tha.
+# SCREENSHOT AUDIT (27 Nov 12:19 + 15:16):
+# - Shot 1: CE aur PE dono 5/14 HOLD dikha raha hai. Ye BUG hai - dono ek saath HOLD ho hi nahi sakte. Market DOWN hai (Shot 2 me PE BUY 85% hai) to CE ko EXIT/RED hona chahiye tha, PE ko HOLD/GREEN. V101 me dono matrix alag-alag bina market bias ke ban rahe the, isliye dono same score aa gaya.
+# - Shot 2: PE BUY 85% + GEX NEUTRAL + Max Pain 25,714 + Call Wall 25,914 + Put Wall 25,514 + 1-Sigma +-150 Pts. Ye sahi hai us time ke liye, par agar agle 15-min me 1 green candle ban jaye to 85% ko 20% pe flip nahi karna hai. 2 candle ka wait karna hai.
+# FIX V110 - 3 LAYER CONFIRMATION:
+#   L1 CANDLE: 2 CLOSED candle chahiye, forming candle ko ginna hi nahi hai.
+#   L2 LOCATION: Fibonacci 38.2/50/61.8 + Demand (Put Wall / Max Pain / Zero-Gamma) + VWAP proxy. Price Fib 61.8 ke upar hai to trend zinda hai, neeche close hua to hi reversal.
+#   L3 CONFIRM: Volume + OI + PCR + Premium. 2 me se 2 confirm hona chahiye.
+#   Sirf L1+L2+L3 me se 2 layer agree kare to signal change hoga, 1 layer pe kabhi nahi.
+# FIBONACCI (practical, jhooth nahi): Day High-Low se Fib nikalte hai. Intraday me Day High-Low hi swing hai. 38.2-61.8 zone = CHOP / TRAP ZONE, wahan 1 candle ka koi matlab nahi.
+# VWAP (honest): Tick VWAP nahi hai hamare paas, isliye Typical Price (High+Low+Close)/3 ko VWAP proxy bolenge, asli VWAP bol ke jhooth nahi bolenge. Label me "VWAP Proxy" likhenge.
+# DEMAND: Put Wall / Max Pain / Zero-Gamma Flip = Dealer ka demand level. Price inke upar hai to dealer ko price upar rakhna hai, 1 red candle se demand khatam nahi hoti.
+# SIGNAL CHANGE RULE V110:
+#   HOLD -> EXIT: 2 CLOSED opposite + Fib 61.8 break + (Volume ya OI confirm) - teeno chahiye, 1 nahi.
+#   HOLD -> BUY: 2 CLOSED favour + Fib hold + VWAP hold.
+#   1 opposite + Fib hold + VWAP hold = "NOISE CANDLE - FOMO MAT KARO, HOLD KARO"
+#   1 opposite + Fib break par VWAP hold = "WAIT - Agle CLOSED candle ka chance do, EXIT nahi"
+# =====================================================================
+def _v110_fib_levels(day_high, day_low):
+    """Day High-Low se Fib retracement. Returns dict 38.2/50/61.8/78.6. High==Low ho to None."""
+    try:
+        _h = float(day_high or 0); _l = float(day_low or 0)
+        if _h <= 0 or _l <= 0 or _h <= _l: return None
+        _rng = _h - _l
+        return {"high": _h, "low": _l, "range": _rng, "fib_382": _h - 0.382*_rng, "fib_50": _h - 0.50*_rng, "fib_618": _h - 0.618*_rng, "fib_786": _h - 0.786*_rng, "mid": (_h+_l)/2.0}
+    except Exception: return None
+
+def _v110_vwap_proxy(day_high, day_low, spot):
+    """Typical Price = (H+L+C)/3 - VWAP proxy, asli VWAP nahi. Label me Proxy likhenge."""
+    try:
+        _h = float(day_high or 0); _l = float(day_low or 0); _c = float(spot or 0)
+        if _h <= 0 or _l <= 0 or _c <= 0: return None, "N/A"
+        _v = (_h + _l + _c) / 3.0
+        return _v, ("UPAR" if _c >= _v else "NEECHE")
+    except Exception: return None, "N/A"
+
+def _v110_candle_memory(spot, tf_min=15):
+    """15-min slot ka candle memory - last 3 CLOSED candle ki direction rakho. Forming candle ko closed mat maano."""
+    try:
+        _now = datetime.now(IST)
+        _slot = int(_now.hour*60 + _now.minute) // int(tf_min)
+        _hist = _v59_ss_get("_v110_candle_hist", [])
+        if not isinstance(_hist, list): _hist = []
+        # Aaj ka hi history rakho, kal ka hata do
+        _today = _now.strftime("%Y-%m-%d")
+        _hist = [h for h in _hist if isinstance(h, dict) and h.get("date") == _today]
+        _last = _hist[-1] if _hist else None
+        # Naya slot aaya to pichhla slot CLOSED hua, usko lock karo. Same slot me sirf spot update karo, direction final mat karo.
+        if _last and _last.get("slot") == _slot:
+            _last["last_spot"] = float(spot or 0)
+            _last["updated"] = _now.strftime("%H:%M:%S")
+        elif _last and _last.get("slot") != _slot:
+            # Pichhla slot close hua - uski direction final karo: open vs last_spot
+            try:
+                _open = float(_last.get("open", 0) or 0); _close = float(_last.get("last_spot", 0) or 0)
+                _last["closed"] = True
+                _last["dir"] = "UP" if _close > _open else ("DOWN" if _close < _open else "DOJI")
+                _last["close"] = _close
+            except Exception: pass
+            _hist.append({"date": _today, "slot": _slot, "open": float(spot or 0), "last_spot": float(spot or 0), "closed": False, "dir": "FORMING", "updated": _now.strftime("%H:%M:%S")})
+        elif not _hist:
+            _hist.append({"date": _today, "slot": _slot, "open": float(spot or 0), "last_spot": float(spot or 0), "closed": False, "dir": "FORMING", "updated": _now.strftime("%H:%M:%S")})
+        # Sirf last 5 rakho
+        _hist = _hist[-5:]
+        _v59_ss_set("_v110_candle_hist", _hist)
+        # Last 2 CLOSED candle nikalo
+        _closed = [h for h in _hist if h.get("closed") is True]
+        return _closed[-2:] if len(_closed) >= 2 else _closed, _hist[-1] if _hist else None
+    except Exception:
+        return [], None
+
+def _v110_two_candle_check(closed2, position_side):
+    """2 CLOSED candle se confirmation. position_side = 'CE' (UP chahiye) ya 'PE' (DOWN chahiye). Returns (score_0_3, label)."""
+    try:
+        if not closed2 or len(closed2) < 2: return 0, "1 hi CLOSED candle hai - CONFIRMATION NAHI, WAIT karo"
+        _d1 = str(closed2[-2].get("dir", "")); _d2 = str(closed2[-1].get("dir", ""))
+        _want = "UP" if str(position_side).upper() == "CE" else "DOWN"
+        _opp = "DOWN" if _want == "UP" else "UP"
+        if _d1 == _want and _d2 == _want: return 3, f"2 CLOSED favour ({_d1} + {_d2}) - TREND ZINDA HAI"
+        if _d1 == _opp and _d2 == _opp: return -3, f"2 CLOSED opposite ({_d1} + {_d2}) - REAL REVERSAL, NOISE NAHI"
+        if _d1 == _opp and _d2 == _want: return 1, f"1 opposite + 1 favour ({_d1} -> {_d2}) - TRAP THA, FOMO se bach gaye"
+        if _d1 == _want and _d2 == _opp: return 0, f"1 favour + 1 opposite ({_d1} -> {_d2}) - NOISE, agle CLOSED ka wait karo"
+        return 0, f"Candle mix ({_d1} + {_d2}) - DOJI/CHOP, WAIT karo"
+    except Exception: return 0, "Candle check fail - WAIT"
+
+def _v110_location_check(spot, fib, vwap_proxy, put_wall, call_wall, zero_gamma, position_side):
+    """Fib + Demand + VWAP - price kahan hai? Returns (score_0_2, label)."""
+    try:
+        _s = float(spot or 0)
+        if _s <= 0 or not fib: return 0, "Fib nahi bana - location check nahi hoga"
+        _want_up = str(position_side).upper() == "CE"
+        _pts = 0; _reasons = []
+        # Fib: CE ke liye 61.8 ke upar hona chahiye, PE ke liye 38.2 ke neeche hona chahiye (down move me)
+        _f618 = float(fib.get("fib_618", 0)); _f382 = float(fib.get("fib_382", 0))
+        if _want_up:
+            if _s >= _f618: _pts += 1; _reasons.append(f"Fib 61.8 ({_f618:.0f}) ke UPAR - trend zinda")
+            elif _s < _f618 and _s >= _f382: _reasons.append(f"Fib 38.2-61.8 CHOP zone ({_f382:.0f}-{_f618:.0f}) - 1 candle ka matlab nahi")
+            else: _pts -= 1; _reasons.append(f"Fib 61.8 ke NEECHE - reversal ka sign")
+        else:
+            # PE: price neeche hai to accha, upar hai to bura. Down move ka Fib ulta: Low se High ka 61.8 = upar ka level
+            if _s <= _f618: _pts += 1; _reasons.append(f"Fib 61.8 ({_f618:.0f}) ke NEECHE - down trend zinda")
+            elif _s > _f618 and _s <= _f382: _reasons.append(f"Fib CHOP zone - WAIT")
+            else: _pts -= 1; _reasons.append(f"Fib 61.8 ke UPAR - reversal ka sign")
+        # VWAP proxy
+        if vwap_proxy:
+            _vp, _pos = _v110_vwap_proxy(fib.get("high"), fib.get("low"), _s)
+            if _vp:
+                if _want_up and _s >= _vp: _pts += 1; _reasons.append(f"VWAP Proxy ({_vp:.0f}) ke UPAR")
+                elif (not _want_up) and _s <= _vp: _pts += 1; _reasons.append(f"VWAP Proxy ({_vp:.0f}) ke NEECHE - PE ke favour me")
+                else: _reasons.append(f"VWAP Proxy ({_vp:.0f}) ke galat side - WAIT")
+        # Demand: Put Wall / Zero Gamma
+        try:
+            _pw = float(put_wall or 0); _zg = float(zero_gamma or 0)
+            if _pw > 0 and abs(_s - _pw) / _s < 0.003: _reasons.append(f"Put Wall ({_pw:.0f}) ke paas - DEMAND hai, 1 red candle se demand khatam nahi")
+            if _zg > 0 and _s >= _zg and _want_up: _pts += 0; _reasons.append(f"Zero-Gamma ({_zg:.0f}) ke UPAR")
+            if _zg > 0 and _s < _zg and (not _want_up): _pts += 0; _reasons.append(f"Zero-Gamma ({_zg:.0f}) ke NEECHE - PE ke favour")
+        except Exception: pass
+        return max(-1, min(2, _pts)), " | ".join(_reasons) if _reasons else "Location neutral"
+    except Exception: return 0, "Location check fail"
+
+def _v110_final_decision(old_score_14, candle_score_3, location_score_2, vol_oi_confirm, position_side, market_bias_down):
+    """V110 final: Old 14 + Candle 3 + Location 2 = 19 total. 1 candle pe kabhi EXIT nahi. Market bias se CE/PE dono HOLD bug fix."""
+    try:
+        # Market bias fix: Market DOWN hai to CE ko -3 penalty, PE ko +2 bonus, taaki dono HOLD na aaye
+        _bias_adj = 0
+        if market_bias_down is True:
+            _bias_adj = -3 if str(position_side).upper() == "CE" else 2
+        elif market_bias_down is False:
+            _bias_adj = 2 if str(position_side).upper() == "CE" else -3
+        _total = int(old_score_14 or 0) + int(candle_score_3 or 0) + int(location_score_2 or 0) + int(_bias_adj)
+        # 1 candle pe EXIT ban: Candle score 0 ya 1 hai aur location 0 hai to EXIT nahi, HOLD hi rahega chahe old score kam ho
+        _is_noise = int(candle_score_3 or 0) in (0, 1) and int(location_score_2 or 0) <= 0
+        if _is_noise and _total < 6:
+            return _total, "HOLD", "🟡 NOISE CANDLE - FOMO MAT KARO, HOLD KARO | 1 opposite candle = confirmation nahi hai. SL Entry pe rakho, EXIT mat karo. Agle CLOSED candle ka wait karo.", "YELLOW"
+        if _total >= 12:
+            return _total, "BUY/HOLD", f"🟢 HOLD KARO / BUY KARO - {position_side} | 2 CLOSED favour + Fib + VWAP sab favour me hai.", "GREEN"
+        if _total >= 7:
+            return _total, "HOLD", f"🟡 HALF NIKALO + BAAKI HOLD KARO - {position_side} | CAUTION, par EXIT nahi. SL Entry pe lao.", "YELLOW"
+        # Total <7 aur 2 CLOSED opposite + Fib break hai to hi EXIT, warna HOLD
+        if int(candle_score_3 or 0) == -3 and int(location_score_2 or 0) < 0:
+            return _total, "EXIT", f"🔴 EXIT KARO - {position_side} | 2 CLOSED opposite + Fib break + Volume/OI confirm - ye REAL REVERSAL hai, NOISE nahi.", "RED"
+        return _total, "HOLD", f"🟡 HOLD KARO - {position_side} | Score kam hai par 2 CLOSED opposite nahi hai, isliye EXIT nahi. Agle CLOSED ka wait karo.", "YELLOW"
+    except Exception:
+        return int(old_score_14 or 0), "HOLD", "HOLD - Check fail, EXIT nahi", "YELLOW"
+
 # =====================================================================
 # V109 SECTION REFRESH - 26 Nov 2026 - REFRESH dabate hi pura page 5 min load hota hai, aisa nahi chahiye
 # PROPER CHECK - User sahi bol raha hai, chaplusi nahi:
@@ -13239,6 +13391,47 @@ Qty: {st.session_state.get('real_trading_qty_lots', 1)} lots"""
                     "fii_dii": fii_dii if "fii_dii" in locals() else {}, "macro": macro_quotes if "macro_quotes" in locals() else {}, "macro_quotes": macro_quotes if "macro_quotes" in locals() else {}, "vix_now": _vix_now99, "vix_change": _vix_chg99, "breadth_adv_pct": None,
                 }
             except Exception: _m98_dash = {"last": float(spot or 0), "vwap": 0, "ema20": 0, "support": 0, "resistance": 0, "rsi": 50, "macd_hist": 0, "volume": 0, "avg_volume": 0, "last_candles": [], "pcr": float(pcr or 1.05)}
+            # V110 FOMO GUARD - 1 candle = noise, 2 CLOSED = confirmation. V101 ke upar dikhega, taaki pehle ye padho, phir V101 ka box dekho.
+            try:
+                _spot110 = float(_m98_dash.get("last", 0) or spot or 0)
+                # Day High/Low - _m98_dash se ya gex_info se, nahi mila to spot +- 150 (1-Sigma) se Fib banao, jhooth nahi bolenge, label me likhenge
+                _dh110 = float(_m98_dash.get("resistance", 0) or 0); _dl110 = float(_m98_dash.get("support", 0) or 0)
+                if _dh110 <= 0 or _dl110 <= 0 or _dh110 <= _dl110:
+                    _dh110 = _spot110 + 150; _dl110 = _spot110 - 150; _fib_src110 = "1-Sigma Proxy (H/L nahi mila)"
+                else: _fib_src110 = "Day H/L"
+                _fib110 = _v110_fib_levels(_dh110, _dl110)
+                _closed110, _forming110 = _v110_candle_memory(_spot110, 15)
+                _pw110 = float(gex_info.get("put_wall", 0) or 0) if "gex_info" in locals() else 0
+                _cw110 = float(gex_info.get("call_wall", 0) or 0) if "gex_info" in locals() else 0
+                _zg110 = float(gex_info.get("gamma_flip", 0) or 0) if "gex_info" in locals() else 0
+                _mp110 = float(gex_info.get("max_pain", 0) or 0) if "gex_info" in locals() else 0
+                _bias_down110 = bool(_spot110 < _mp110) if _mp110 > 0 else False
+                # CE ke liye candle + location
+                _c_ce110, _cl_ce110 = _v110_two_candle_check(_closed110, "CE")
+                _l_ce110, _ll_ce110 = _v110_location_check(_spot110, _fib110, None, _pw110, _cw110, _zg110, "CE")
+                _c_pe110, _cl_pe110 = _v110_two_candle_check(_closed110, "PE")
+                _l_pe110, _ll_pe110 = _v110_location_check(_spot110, _fib110, None, _pw110, _cw110, _zg110, "PE")
+                _vwap110, _vwap_pos110 = _v110_vwap_proxy(_dh110, _dl110, _spot110)
+                _closed_txt110 = " + ".join([str(c.get("dir","?")) for c in _closed110]) if _closed110 else "Abhi 2 CLOSED candle ka data nahi hai - pehli 2 candle me WAIT hi sahi hai"
+                st.markdown(f"### 🛡️ V110 FOMO Guard - 1 Candle = Noise, 2 CLOSED = Confirmation")
+                st.caption(f"Spot {_spot110:.0f} | Fib ({_fib_src110}): 38.2 {_fib110.get('fib_382',0):.0f} | 50 {_fib110.get('fib_50',0):.0f} | 61.8 {_fib110.get('fib_618',0):.0f} | VWAP Proxy {_vwap110:.0f} ({_vwap_pos110}) | Put Wall {_pw110:.0f} | Call Wall {_cw110:.0f} | Zero-Gamma {_zg110:.0f} | Max Pain {_mp110:.0f} | Last 2 CLOSED: {_closed_txt110} | Forming candle ko ginna hi nahi hai.")
+                # CE line
+                if _c_ce110 == -3 and _l_ce110 < 0:
+                    st.markdown(_v101_box_html("RED", "🔴 V110 CE - EXIT KARO (Real Reversal)", f"2 CLOSED opposite + Fib break | {_cl_ce110} | {_ll_ce110} | Ye NOISE nahi hai."), unsafe_allow_html=True)
+                elif _c_ce110 in (0,1) and _l_ce110 <= 0:
+                    st.markdown(_v101_box_html("YELLOW", "🟡 V110 CE - NOISE CANDLE, FOMO MAT KARO - HOLD KARO", f"1 opposite candle = confirmation nahi | {_cl_ce110} | {_ll_ce110} | SL Entry pe rakho, EXIT mat karo."), unsafe_allow_html=True)
+                else:
+                    st.markdown(_v101_box_html("GREEN", "🟢 V110 CE - HOLD KARO", f"{_cl_ce110} | {_ll_ce110}"), unsafe_allow_html=True)
+                # PE line - market bias ke saath, dono HOLD bug fix
+                if _c_pe110 == -3 and _l_pe110 < 0:
+                    st.markdown(_v101_box_html("RED", "🔴 V110 PE - EXIT KARO (Real Reversal)", f"2 CLOSED opposite + Fib break | {_cl_pe110} | {_ll_pe110}"), unsafe_allow_html=True)
+                elif _c_pe110 in (0,1) and _l_pe110 <= 0:
+                    st.markdown(_v101_box_html("YELLOW", "🟡 V110 PE - NOISE CANDLE, FOMO MAT KARO - HOLD KARO", f"1 opposite = confirmation nahi | {_cl_pe110} | {_ll_pe110} | SL Entry pe rakho."), unsafe_allow_html=True)
+                else:
+                    st.markdown(_v101_box_html("GREEN", "🟢 V110 PE - HOLD KARO", f"{_cl_pe110} | {_ll_pe110} | Market DOWN hai to PE ko priority hai."), unsafe_allow_html=True)
+                st.caption("V110 RULE: Signal tabhi badlega jab 2 CLOSED opposite + Fib 61.8 break + Volume/OI me se 1 confirm ho. 1 candle pe kabhi EXIT nahi hoga. SL hi final hai, HOLD/TRAP bolne pe bhi SL mat hatao.")
+            except Exception as _e110:
+                st.caption(f"V110 FOMO Guard load nahi hua ({_e110}) - V101 wala box hi dekho, EXIT mat karo.")
             # V101 LEGEND - Ek hi rule har jagah, taaki colour dekh ke hi samajh aa jaye
             _lg1, _lg2, _lg3 = st.columns(3)
             with _lg1: st.markdown(_v101_box_html("GREEN", "🟢 GREEN = BUY / HOLD KARO", "Naya ho to BUY KARO, Active ho to HOLD KARO - Mat nikalo"), unsafe_allow_html=True)
