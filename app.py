@@ -4534,6 +4534,46 @@ def calculate_trap_vs_reversal_v100(
 
 
 
+
+# =====================================================================
+# V111 - 27 Nov 2026 - PCR ACTION LADDER - Jaise VIX me point pe action hai, waise PCR me bhi point pe action chahiye
+# USER KA SAWAAL (sahi hai): Screenshot me VIX 16.49 pe HIGH VOLATILITY likha hai, par PCR 0.71 pe sirf LIVE likha hai. 0.71 pe karna kya hai - BUY? HOLD? EXIT? - pata nahi chalta.
+# FIX: PCR aur VIX dono ke liye point-wise ACTION LADDER, colour + label + action ke saath.
+# PCR KA SACH (jhooth nahi, contrarian hai):
+# - PCR = Put OI / Call OI. PCR high matlab Put zyada hai = log neeche se darr ke Put kharida hai = market oversold hai = upar reversal aa sakta hai = BULLISH (contrarian).
+# - PCR low matlab Call zyada hai = log upar ke liye Call kharid rahe hai = market overbought hai = neeche reversal aa sakta hai = BEARISH.
+# - Isliye PCR 0.71 (BEARISH zone) me CE BUY mat karo, PE favour hai. Yehi teri screenshot ka 0.71 bol raha hai.
+# - LIMIT (jhooth nahi): PCR akela signal nahi hai. PCR + Price + 2 Candle + Fib mil ke signal banega. PCR 0.71 hai aur price Fib 61.8 ke upar hai to PE BUY mat karo, WAIT karo. PCR sirf bias dega, entry 2 candle se hogi.
+# VIX LADDER (practical):
+# - VIX <12 = Premium sukh jayega, BUY option mat karo. 12-14 = Range, breakout ka wait. 14-16 = Normal. 16-18 = Big moves (teri 16.49 yahi hai). 18-22 = Panic. >22 = Fresh trade mat karo.
+# =====================================================================
+def _v111_pcr_action(pcr):
+    """PCR point -> colour + label + action. Returns (color, label, action)."""
+    try:
+        _p = float(pcr or 0)
+        if _p <= 0: return "YELLOW", "PCR N/A", "PCR nahi aaya - Price + 2 Candle se hi decide karo, PCR pe bharosa mat karo."
+        if _p < 0.60: return "RED", "🔴 PCR <0.60 - EXTREME BEARISH / TOP ZONE", "Call bahut zyada hai, market overbought hai. CE me NAYA BUY MAT KARO. CE HOLD hai to EXIT ki taiyari karo. PE BUY ka wait karo, 2 CLOSED red ka confirmation lo."
+        if _p < 0.75: return "ORANGE", "🟠 PCR 0.60-0.75 - BEARISH", "Market neeche ka bias hai. PE FAVOUR me hai, CE FAVOUR me nahi. CE me naya BUY mat karo. CE HOLD hai to HALF NIKALO + SL Entry pe lao. PE HOLD karo, FOMO me mat nikalo. Tera 0.71 isi zone me hai."
+        if _p < 0.90: return "YELLOW", "🟡 PCR 0.75-0.90 - NEUTRAL-BEARISH", "Sideways se neeche ka bias. Naya trade mat karo, WAIT karo. 2 CLOSED candle + Fib se decide karo. CE/PE dono me HALF + HOLD."
+        if _p < 1.05: return "YELLOW", "🟡 PCR 0.90-1.05 - NEUTRAL", "Dono side possible hai. PCR se koi edge nahi hai. Fib 61.8 + 2 Candle + VWAP se decide karo. FOMO me entry mat lo."
+        if _p < 1.20: return "GREEN", "🟢 PCR 1.05-1.20 - BULLISH", "Put writers strong hai, CE FAVOUR me hai. PE me NAYA BUY MAT KARO. PE HOLD hai to HALF NIKALO. CE HOLD karo."
+        if _p < 1.40: return "GREEN", "🟢 PCR 1.20-1.40 - STRONG BULLISH / BOTTOM ZONE", "Market oversold hai, upar reversal ka zone hai. CE BUY ka best zone hai, par 2 CLOSED green ka wait karo. PE HOLD hai to EXIT ki taiyari karo."
+        return "RED", "🔴 PCR >1.40 - EXTREME BULLISH / PANIC BOTTOM", "Bahut zyada Put hai, panic bottom hai. Reversal aayega, par FOMO me CE mat kharido. 2 CLOSED green + Fib hold ka wait karo. PE se EXIT karo."
+    except Exception: return "YELLOW", "PCR N/A", "PCR check fail - Price se decide karo."
+
+def _v111_vix_action(vix):
+    """VIX point -> colour + label + action. Returns (color, label, action)."""
+    try:
+        _v = float(vix or 0)
+        if _v <= 0: return "YELLOW", "VIX N/A", "VIX nahi aaya - Premium decay ka andaza nahi hai, SL tight rakho."
+        if _v < 12: return "GREEN", "🟢 VIX <12 - BAHUT LOW VOLATILITY", "Premium sukh jayega, BUY option mat karo - time decay kha jayega. Option SELL side ka socho, ya breakout ka wait karo. SL tight rakho."
+        if _v < 14: return "GREEN", "🟢 VIX 12-14 - LOW VOLATILITY", "Range market hai. BUY sirf breakout pe karo, beech me mat karo. SL tight, target chhota rakho."
+        if _v < 16: return "YELLOW", "🟡 VIX 14-16 - NORMAL VOLATILITY", "Dono side possible hai. Normal SL + Normal target rakho. Fib + 2 Candle se decide karo."
+        if _v < 18: return "ORANGE", "🟠 VIX 16-18 - HIGH VOLATILITY", "Bade moves aayenge. BUY side accha hai, par SL WIDE rakhna padega, tight SL kat jayega. FOMO me mat ghuso, 2 candle ka wait karo. Tera 16.49 isi zone me hai."
+        if _v < 22: return "RED", "🔴 VIX 18-22 - VERY HIGH / PANIC", "Panic hai, bade gap aayenge. Option SELL mat karo, BUY side pe raho. Fresh trade me jaldi mat ghuso, 2 CLOSED ka wait karo. SL wide rakho."
+        return "RED", "🔴 VIX >22 - EXTREME PANIC", "Fresh trade MAT KARO. Sirf HOLD karo, wo bhi wide SL ke saath. Market kabhi bhi ulta ghoom sakta hai."
+    except Exception: return "YELLOW", "VIX N/A", "VIX check fail."
+
 # =====================================================================
 # V110 - 27 Nov 2026 - 1 CANDLE = NOISE, 2 CLOSED CANDLE = CONFIRMATION
 # USER KA SAWAAL (sahi hai, chaplusi nahi): "Ek candle change hote hi signal change karne ki jaroorat hai kya? Next candle opposite, uske next favour me, hum FOMO me loss/at par nikal jaate hai."
@@ -7018,8 +7058,17 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         else:
             _v88_info_card(f"{selected_underlying} Spot", "Feed Retry..." if _is_open else "Market Closed", "Live Feed Blocked - Last Tick aa raha hai" if _is_open else "Feed Offline", value_color="#ef4444" if _is_open else "#ffffff")
     with s2:
-        _vix_label93 = f"Data: {_data_time92} | [V104] {_vix_src93} | " + ("OPTIMAL BUYING" if float(vix_val) < 15 else "HIGH VOLATILITY") + (" | STALE ho to VIX pe SL mat badhao" if "STALE" in str(_vix_src93) else "")
+        # V111 VIX ACTION LADDER - 16.49 pe sirf HIGH VOLATILITY nahi, kya karna hai wo bhi likha aayega
+        try:
+            _vix_col111, _vix_lab111, _vix_act111 = _v111_vix_action(float(vix_val or 0))
+            _vix_label93 = f"Data: {_data_time92} | [V104] {_vix_src93} | {_vix_lab111} | STALE ho to VIX pe SL mat badhao" if "STALE" in str(_vix_src93) else f"Data: {_data_time92} | [V104] {_vix_src93} | {_vix_lab111}"
+        except Exception:
+            _vix_label93 = f"Data: {_data_time92} | [V104] {_vix_src93} | " + ("OPTIMAL BUYING" if float(vix_val) < 15 else "HIGH VOLATILITY")
         _v88_live_card("India VIX", fmt(float(vix_val)), float(vix_val), "vix", _vix_label93, invert=True)
+        try:
+            _vix_col111b, _vix_lab111b, _vix_act111b = _v111_vix_action(float(vix_val or 0))
+            st.markdown(_v101_box_html(_vix_col111b, _vix_lab111b, _vix_act111b), unsafe_allow_html=True)
+        except Exception: pass
     with s3:
         # V103: PCR card ab jhooth nahi bolega - LIVE hai to LIVE, STALE hai to STALE + kitne min se same hai + CE/PE OI + history
         try:
@@ -7039,6 +7088,28 @@ def _v89_ticker_fragment(selected_underlying, current_expiry, tf):
         else:
             _pcr_label93 = f"Data: {_now_str} | [V106] STALE - Chain + Quantsapp dono fail - 1.05 ko LIVE mat samjho | Age: {_pcr_age103:.0f} min se same | CE OI: {_pcr_ce103:,.0f} | PE OI: {_pcr_pe103:,.0f}"
         _v88_live_card("Put-Call Ratio (PCR)", fmt(float(pcr), 2), float(pcr), "pcr", _pcr_label93)
+        # V111 PCR ACTION LADDER - 0.71 pe kya karna hai, yehi likha aayega
+        try:
+            _pcr_col111, _pcr_lab111, _pcr_act111 = _v111_pcr_action(float(pcr or 0))
+            st.markdown(_v101_box_html(_pcr_col111, _pcr_lab111, _pcr_act111), unsafe_allow_html=True)
+            st.caption("V111 PCR RULE: PCR akela signal nahi hai. PCR + Price + 2 CLOSED Candle + Fib mil ke signal banega. PCR sirf bias dega.")
+        except Exception: pass
+        # V111 Full Ladder Table - ek jagah sab point pe action, taaki baar-baar scroll na karna pade
+        try:
+            with st.expander("📊 V111 - PCR + VIX Full Action Ladder - Kitne Point Pe Kya Action Hoga", expanded=False):
+                st.markdown("**PCR Ladder (Put OI / Call OI):**")
+                st.markdown("- **<0.60 🔴 EXTREME BEARISH / TOP:** CE NAYA BUY MAT KARO | CE HOLD hai to EXIT ki taiyari | PE BUY ka wait karo")
+                st.markdown("- **0.60-0.75 🟠 BEARISH (Tera 0.71 yahi hai):** PE FAVOUR | CE me naya BUY mat karo | CE HOLD hai to HALF NIKALO + SL Entry pe")
+                st.markdown("- **0.75-0.90 🟡 NEUTRAL-BEARISH:** Naya trade mat karo, WAIT | 2 Candle + Fib se decide karo")
+                st.markdown("- **0.90-1.05 🟡 NEUTRAL:** Dono side possible, PCR se edge nahi | Fib + 2 Candle se decide karo")
+                st.markdown("- **1.05-1.20 🟢 BULLISH:** CE FAVOUR | PE me naya BUY mat karo | PE HOLD hai to HALF NIKALO")
+                st.markdown("- **1.20-1.40 🟢 STRONG BULLISH / BOTTOM:** CE BUY ka best zone, par 2 CLOSED green ka wait karo | PE se EXIT ki taiyari")
+                st.markdown("- **>1.40 🔴 EXTREME BULLISH / PANIC BOTTOM:** FOMO me CE mat kharido, 2 CLOSED ka wait karo | PE se EXIT karo")
+                st.markdown("**VIX Ladder:**")
+                st.markdown("- **<12 🟢 BAHUT LOW:** Premium sukh jayega, BUY option mat karo | **12-14 🟢 LOW:** Range, breakout ka wait | **14-16 🟡 NORMAL:** Normal SL/Target")
+                st.markdown("- **16-18 🟠 HIGH (Tera 16.49 yahi hai):** Bade moves, BUY side accha, SL WIDE rakho, tight SL kat jayega | **18-22 🔴 PANIC:** Option SELL mat karo | **>22 🔴 EXTREME:** Fresh trade MAT KARO")
+                st.caption("RULE: PCR akela signal nahi hai. PCR + Price + 2 CLOSED Candle + Fib 61.8 mil ke signal banega. SL hi final hai.")
+        except Exception: pass
         # History + warning
         try:
             if _pcr_hist103 and len(_pcr_hist103) >= 2:
